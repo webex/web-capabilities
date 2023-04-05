@@ -1,7 +1,7 @@
 {
-  "name": "typescript-boilerplate",
+  "name": "@webex/web-capabilities",
   "version": "0.1.0",
-  "description": "",
+  "description": "A library to check Webex feature capabilities for web clients.",
   "main": "dist/cjs/index.js",
   "module": "dist/esm/index.js",
   "types": "dist/types/index.d.ts",
@@ -32,7 +32,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://sqbu-github.cisco.com/CPaaS/typescript-boilerplate"
+    "url": "https://github.com/webex/web-capabilities"
   },
   "files": [
     "dist/**/*"

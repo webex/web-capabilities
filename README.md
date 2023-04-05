@@ -1,6 +1,18 @@
-# cpaas-boilerplate
+# web-capabilities
 
-Boilerplate for Cisco's CPaaS Typescript projects.
+A library to check Webex feature capabilities for web clients.
+
+# Example
+
+Use the `WebCapabilities` class to check whether the machine is capable of certain features.
+
+```javascript
+import { CapabilityState, WebCapabilities } from '@webex/web-capabilities';
+
+if (WebCapabilities.isCapableOfBackgroundNoiseRemoval() === CapabilityState.CAPABLE) {
+  console.log('This machine is capable of background noise removal!');
+}
+```
 
 # Setup
 
