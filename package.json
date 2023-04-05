@@ -41,7 +41,7 @@
   ],
   "keywords": [],
   "author": "",
-  "license": "ISC",
+  "license": "MIT",
   "lint-staged": {
     "*.ts": [
       "prettier --write",
