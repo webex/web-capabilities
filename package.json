@@ -1,0 +1,85 @@
+{
+  "name": "typescript-boilerplate",
+  "version": "0.1.0",
+  "description": "",
+  "main": "dist/cjs/index.js",
+  "module": "dist/esm/index.js",
+  "types": "dist/types/index.d.ts",
+  "exports": {
+    "import": "./dist/esm/index.js",
+    "require": "./dist/cjs/index.js"
+  },
+  "scripts": {
+    "build": "run-s clean compile",
+    "clean": "yarn transpile:clean",
+    "compile": "rollup -c ./rollup.config.js",
+    "docs": "rimraf ./docs/* && typedoc",
+    "fix": "run-s fix:*",
+    "fix:prettier": "prettier \"src/**/*.ts\" --write",
+    "fix:lint": "eslint src --ext .ts --fix",
+    "prepare": "husky install",
+    "test": "run-s build test:*",
+    "test:coverage": "jest --coverage",
+    "test:lint": "eslint src --ext .ts --max-warnings=0",
+    "test:prettier": "prettier \"src/**/*.ts\" --list-different",
+    "test:spelling": "cspell \"{README.md,.github/*.md,src/**/*.ts}\"",
+    "test:unit": "jest",
+    "transpile": "tsc",
+    "transpile:clean": "rimraf ./dist",
+    "transpile:validate": "tsc --noemit",
+    "transpile:watch": "tsc --watch",
+    "watch": "rollup -c ./rollup.config.js -w"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://sqbu-github.cisco.com/CPaaS/typescript-boilerplate"
+  },
+  "files": [
+    "dist/**/*"
+  ],
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "lint-staged": {
+    "*.ts": [
+      "prettier --write",
+      "eslint --max-warnings=0",
+      "cspell"
+    ]
+  },
+  "engines": {
+    "node": ">=0.12",
+    "npm": "please-use-yarn",
+    "yarn": ">= 1.19.1"
+  },
+  "devDependencies": {
+    "@commitlint/cli": "^16.0.2",
+    "@commitlint/config-conventional": "^16.0.0",
+    "@rollup/plugin-commonjs": "^21.0.1",
+    "@rollup/plugin-node-resolve": "^13.1.3",
+    "@types/jest": "^27.4.0",
+    "@typescript-eslint/eslint-plugin": "^5.9.0",
+    "@typescript-eslint/parser": "^5.9.0",
+    "cspell": "^5.15.1",
+    "eslint": "^8.6.0",
+    "eslint-config-airbnb-base": "^15.0.0",
+    "eslint-config-prettier": "^8.3.0",
+    "eslint-plugin-import": "^2.25.4",
+    "eslint-plugin-jest": "^25.3.4",
+    "eslint-plugin-jsdoc": "^37.6.1",
+    "eslint-plugin-prettier": "^4.0.0",
+    "husky": "^7.0.4",
+    "jest": "^27.4.7",
+    "lint-staged": "^12.1.7",
+    "npm-run-all": "^4.1.5",
+    "prettier": "^2.5.1",
+    "rimraf": "^3.0.2",
+    "rollup": "^2.63.0",
+    "rollup-plugin-dts": "^4.1.0",
+    "rollup-plugin-execute": "^1.1.1",
+    "rollup-plugin-typescript2": "^0.31.1",
+    "ts-jest": "^27.1.2",
+    "typedoc": "^0.22.10",
+    "typescript": "^4.5.4"
+  }
+}
