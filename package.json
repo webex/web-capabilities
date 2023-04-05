@@ -31,10 +31,11 @@
     "transpile:watch": "tsc --watch",
     "watch": "rollup -c ./rollup.config.js -w"
   },
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/webex/web-capabilities"
+  "publishConfig": {
+    "registry": "https://registry.npmjs.org",
+    "access": "public"
   },
+  "repository": "https://github.com/webex/web-capabilities.git",
   "files": [
     "dist/**/*"
   ],
