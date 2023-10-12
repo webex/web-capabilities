@@ -1,3 +1,10 @@
+# [1.1.0](https://github.com/webex/web-capabilities/compare/v1.0.0...v1.1.0) (2023-10-12)
+
+
+### Features
+
+* add API to check browser info ([#3](https://github.com/webex/web-capabilities/issues/3)) ([2e92a27](https://github.com/webex/web-capabilities/commit/2e92a27aa8d872395b9019632518548b9821d7a3))
+
 # 1.0.0 (2023-04-06)
 
 
