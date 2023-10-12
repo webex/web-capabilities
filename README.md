@@ -14,6 +14,16 @@ if (WebCapabilities.isCapableOfBackgroundNoiseRemoval() === CapabilityState.CAPA
 }
 ```
 
+Use the `BrowserInfo` class to check certain details about the browser.
+
+```javascript
+import { BrowserInfo } from '@webex/web-capabilities';
+
+if (BrowserInfo.isChrome() && BrowserInfo.isSubVersionOf('110')) {
+  console.log('This browser is Chrome version 110!');
+}
+```
+
 # Setup
 
 1. Run `yarn` to install dependencies.
