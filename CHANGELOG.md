@@ -1,3 +1,10 @@
+## [1.1.1](https://github.com/webex/web-capabilities/compare/v1.1.0...v1.1.1) (2023-10-12)
+
+
+### Bug Fixes
+
+* remove engine requirements in package.json ([#4](https://github.com/webex/web-capabilities/issues/4)) ([5244698](https://github.com/webex/web-capabilities/commit/52446988e3fac1c6f4cd4185e515ee22edbc4859))
+
 # [1.1.0](https://github.com/webex/web-capabilities/compare/v1.0.0...v1.1.0) (2023-10-12)
 
 
