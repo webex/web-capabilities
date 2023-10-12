@@ -49,11 +49,6 @@
       "cspell"
     ]
   },
-  "engines": {
-    "node": ">=0.12",
-    "npm": "please-use-yarn",
-    "yarn": ">= 1.19.1"
-  },
   "devDependencies": {
     "@commitlint/cli": "^16.0.2",
     "@commitlint/config-conventional": "^16.0.0",
