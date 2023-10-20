@@ -34,6 +34,21 @@ export class WebCapabilities {
   }
 
   /**
+   * Checks whether the machine is capable of virtual background.
+   *
+   * @returns A {@link CapabilityState}.
+   */
+  static isCapableOfVirtualBackground(): CapabilityState {
+    if (WebCapabilities.cpuInfo.numLogicalCores === undefined) {
+      return CapabilityState.UNKNOWN;
+    }
+    if (WebCapabilities.cpuInfo.numLogicalCores < 2) {
+      return CapabilityState.NOT_CAPABLE;
+    }
+    return CapabilityState.CAPABLE;
+  }
+
+  /**
    * Checks whether the machine is capable of receiving 1080p video.
    *
    * @returns A {@link CapabilityState}.
