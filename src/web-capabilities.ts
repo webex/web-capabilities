@@ -1,4 +1,4 @@
-import { getCpuInfo } from './cpu-info';
+import { CpuInfo, getCpuInfo } from './cpu-info';
 
 /**
  * Used by the {@link WebCapabilities} class to mark features as "not capable", "capable", or
@@ -76,5 +76,14 @@ export class WebCapabilities {
       return CapabilityState.NOT_CAPABLE;
     }
     return CapabilityState.CAPABLE;
+  }
+
+  /**
+   * Retrieves the current CPU information of the system.
+   *
+   * @returns An object containing details about the CPU.
+   */
+  static getCpuInfo(): CpuInfo {
+    return WebCapabilities.cpuInfo;
   }
 }

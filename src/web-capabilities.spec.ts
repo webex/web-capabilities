@@ -52,4 +52,10 @@ describe('WebCapabilities', () => {
     expect(WebCapabilities.isCapableOfReceiving1080pVideo()).toBe(CapabilityState.CAPABLE);
     expect(WebCapabilities.isCapableOfSending1080pVideo()).toBe(CapabilityState.CAPABLE);
   });
+  it('should return the number of cores', () => {
+    expect.hasAssertions();
+
+    mockCpuInfo({ numLogicalCores: 8 });
+    expect(WebCapabilities.getCpuInfo().numLogicalCores).toBe(8);
+  });
 });
