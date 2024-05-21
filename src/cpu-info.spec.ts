@@ -1,20 +1,18 @@
-import { getCpuInfo } from './cpu-info';
+import { CpuInfo } from './cpu-info';
 
-describe('getCpuInfo', () => {
+describe('CpuInfo', () => {
   it('should get correct CPU information when available', () => {
     expect.assertions(1);
 
-    jest.spyOn(Navigator.prototype, 'hardwareConcurrency', 'get').mockReturnValue(1);
+    jest.spyOn(CpuInfo, 'getNumLogicalCores').mockReturnValue(1);
 
-    const cpuInfo = getCpuInfo();
-    expect(cpuInfo.numLogicalCores).toBe(1);
+    expect(CpuInfo.getNumLogicalCores()).toBe(1);
   });
   it('should get correct CPU information when not available', () => {
     expect.assertions(1);
 
-    jest.spyOn(Navigator.prototype, 'hardwareConcurrency', 'get').mockImplementation();
+    jest.spyOn(CpuInfo, 'getNumLogicalCores').mockImplementation();
 
-    const cpuInfo = getCpuInfo();
-    expect(cpuInfo.numLogicalCores).toBeUndefined();
+    expect(CpuInfo.getNumLogicalCores()).toBeUndefined();
   });
 });

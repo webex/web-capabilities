@@ -1,18 +1,15 @@
-export type CpuInfo = {
-  numLogicalCores?: number;
-};
-
 /**
- * Get the available information about the machine's CPU.
- *
- * @returns The {@link CpuInfo}.
+ * Provides information about the CPU.
  */
-export function getCpuInfo(): CpuInfo {
-  const cpuInfo = {} as CpuInfo;
+export class CpuInfo {
+  private static numLogicalCores = navigator?.hardwareConcurrency;
 
-  if (navigator.hardwareConcurrency) {
-    cpuInfo.numLogicalCores = navigator.hardwareConcurrency;
+  /**
+   * Gets the number of logical CPU cores.
+   *
+   * @returns The number of logical CPU cores, or undefined if not available.
+   */
+  static getNumLogicalCores(): number | undefined {
+    return this.numLogicalCores;
   }
-
-  return cpuInfo;
 }

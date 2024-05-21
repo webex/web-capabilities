@@ -1,4 +1,4 @@
-import { CpuInfo, getCpuInfo } from './cpu-info';
+import { CpuInfo } from './cpu-info';
 
 /**
  * Used by the {@link WebCapabilities} class to mark features as "not capable", "capable", or
@@ -16,7 +16,7 @@ export enum CapabilityState {
  * information.
  */
 export class WebCapabilities {
-  private static cpuInfo = getCpuInfo();
+  static numCores = CpuInfo.getNumLogicalCores();
 
   /**
    * Checks whether the machine is capable of background noise removal.
@@ -24,10 +24,10 @@ export class WebCapabilities {
    * @returns A {@link CapabilityState}.
    */
   static isCapableOfBackgroundNoiseRemoval(): CapabilityState {
-    if (WebCapabilities.cpuInfo.numLogicalCores === undefined) {
+    if (WebCapabilities.numCores === undefined) {
       return CapabilityState.UNKNOWN;
     }
-    if (WebCapabilities.cpuInfo.numLogicalCores < 2) {
+    if (WebCapabilities.numCores < 2) {
       return CapabilityState.NOT_CAPABLE;
     }
     return CapabilityState.CAPABLE;
@@ -39,10 +39,10 @@ export class WebCapabilities {
    * @returns A {@link CapabilityState}.
    */
   static isCapableOfVirtualBackground(): CapabilityState {
-    if (WebCapabilities.cpuInfo.numLogicalCores === undefined) {
+    if (WebCapabilities.numCores === undefined) {
       return CapabilityState.UNKNOWN;
     }
-    if (WebCapabilities.cpuInfo.numLogicalCores < 2) {
+    if (WebCapabilities.numCores < 2) {
       return CapabilityState.NOT_CAPABLE;
     }
     return CapabilityState.CAPABLE;
@@ -54,10 +54,10 @@ export class WebCapabilities {
    * @returns A {@link CapabilityState}.
    */
   static isCapableOfReceiving1080pVideo(): CapabilityState {
-    if (WebCapabilities.cpuInfo.numLogicalCores === undefined) {
+    if (WebCapabilities.numCores === undefined) {
       return CapabilityState.UNKNOWN;
     }
-    if (WebCapabilities.cpuInfo.numLogicalCores < 2) {
+    if (WebCapabilities.numCores < 2) {
       return CapabilityState.NOT_CAPABLE;
     }
     return CapabilityState.CAPABLE;
@@ -69,21 +69,12 @@ export class WebCapabilities {
    * @returns A {@link CapabilityState}.
    */
   static isCapableOfSending1080pVideo(): CapabilityState {
-    if (WebCapabilities.cpuInfo.numLogicalCores === undefined) {
+    if (WebCapabilities.numCores === undefined) {
       return CapabilityState.UNKNOWN;
     }
-    if (WebCapabilities.cpuInfo.numLogicalCores < 8) {
+    if (WebCapabilities.numCores < 8) {
       return CapabilityState.NOT_CAPABLE;
     }
     return CapabilityState.CAPABLE;
-  }
-
-  /**
-   * Retrieves the current CPU information of the system.
-   *
-   * @returns An object containing details about the CPU.
-   */
-  static getCpuInfo(): CpuInfo {
-    return WebCapabilities.cpuInfo;
   }
 }
