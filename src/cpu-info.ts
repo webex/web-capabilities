@@ -2,14 +2,12 @@
  * Provides information about the CPU.
  */
 export class CpuInfo {
-  private static numLogicalCores = navigator?.hardwareConcurrency;
-
   /**
    * Gets the number of logical CPU cores.
    *
    * @returns The number of logical CPU cores, or undefined if not available.
    */
-  static getNumLogicalCores(): number | undefined {
-    return this.numLogicalCores;
+  static getNumLogicalCores(): number {
+    return navigator.hardwareConcurrency;
   }
 }

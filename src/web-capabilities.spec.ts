@@ -10,7 +10,7 @@ import { CapabilityState, WebCapabilities } from './web-capabilities';
 describe('WebCapabilities', () => {
   it('should get correct capabilities for a machine with unknown CPU information', () => {
     expect.assertions(4);
-    WebCapabilities.numCores = undefined;
+    jest.spyOn(CpuInfo, 'getNumLogicalCores').mockImplementation();
     expect(WebCapabilities.isCapableOfBackgroundNoiseRemoval()).toBe(CapabilityState.UNKNOWN);
     expect(WebCapabilities.isCapableOfVirtualBackground()).toBe(CapabilityState.UNKNOWN);
     expect(WebCapabilities.isCapableOfReceiving1080pVideo()).toBe(CapabilityState.UNKNOWN);
@@ -18,7 +18,7 @@ describe('WebCapabilities', () => {
   });
   it('should get correct capabilities for a 1-core machine', () => {
     expect.assertions(4);
-    WebCapabilities.numCores = 1;
+    jest.spyOn(CpuInfo, 'getNumLogicalCores').mockReturnValue(1);
     expect(WebCapabilities.isCapableOfBackgroundNoiseRemoval()).toBe(CapabilityState.NOT_CAPABLE);
     expect(WebCapabilities.isCapableOfVirtualBackground()).toBe(CapabilityState.NOT_CAPABLE);
     expect(WebCapabilities.isCapableOfReceiving1080pVideo()).toBe(CapabilityState.NOT_CAPABLE);
@@ -26,7 +26,7 @@ describe('WebCapabilities', () => {
   });
   it('should get correct capabilities for a 2-core machine', () => {
     expect.assertions(4);
-    WebCapabilities.numCores = 2;
+    jest.spyOn(CpuInfo, 'getNumLogicalCores').mockReturnValue(2);
     expect(WebCapabilities.isCapableOfBackgroundNoiseRemoval()).toBe(CapabilityState.CAPABLE);
     expect(WebCapabilities.isCapableOfVirtualBackground()).toBe(CapabilityState.CAPABLE);
     expect(WebCapabilities.isCapableOfReceiving1080pVideo()).toBe(CapabilityState.CAPABLE);
@@ -34,16 +34,10 @@ describe('WebCapabilities', () => {
   });
   it('should get correct capabilities for a 8-core machine', () => {
     expect.assertions(4);
-    WebCapabilities.numCores = 8;
+    jest.spyOn(CpuInfo, 'getNumLogicalCores').mockReturnValue(8);
     expect(WebCapabilities.isCapableOfBackgroundNoiseRemoval()).toBe(CapabilityState.CAPABLE);
     expect(WebCapabilities.isCapableOfVirtualBackground()).toBe(CapabilityState.CAPABLE);
     expect(WebCapabilities.isCapableOfReceiving1080pVideo()).toBe(CapabilityState.CAPABLE);
     expect(WebCapabilities.isCapableOfSending1080pVideo()).toBe(CapabilityState.CAPABLE);
-  });
-  it('should return the number of cores', () => {
-    expect.hasAssertions();
-    WebCapabilities.numCores = 4;
-    jest.spyOn(CpuInfo, 'getNumLogicalCores').mockReturnValue(4);
-    expect(CpuInfo.getNumLogicalCores()).toBe(WebCapabilities.numCores);
   });
 });

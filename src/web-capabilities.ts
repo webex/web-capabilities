@@ -16,18 +16,16 @@ export enum CapabilityState {
  * information.
  */
 export class WebCapabilities {
-  static numCores = CpuInfo.getNumLogicalCores();
-
   /**
    * Checks whether the machine is capable of background noise removal.
    *
    * @returns A {@link CapabilityState}.
    */
   static isCapableOfBackgroundNoiseRemoval(): CapabilityState {
-    if (WebCapabilities.numCores === undefined) {
+    if (CpuInfo.getNumLogicalCores() === undefined) {
       return CapabilityState.UNKNOWN;
     }
-    if (WebCapabilities.numCores < 2) {
+    if (CpuInfo.getNumLogicalCores() < 2) {
       return CapabilityState.NOT_CAPABLE;
     }
     return CapabilityState.CAPABLE;
@@ -39,10 +37,10 @@ export class WebCapabilities {
    * @returns A {@link CapabilityState}.
    */
   static isCapableOfVirtualBackground(): CapabilityState {
-    if (WebCapabilities.numCores === undefined) {
+    if (CpuInfo.getNumLogicalCores() === undefined) {
       return CapabilityState.UNKNOWN;
     }
-    if (WebCapabilities.numCores < 2) {
+    if (CpuInfo.getNumLogicalCores() < 2) {
       return CapabilityState.NOT_CAPABLE;
     }
     return CapabilityState.CAPABLE;
@@ -54,10 +52,10 @@ export class WebCapabilities {
    * @returns A {@link CapabilityState}.
    */
   static isCapableOfReceiving1080pVideo(): CapabilityState {
-    if (WebCapabilities.numCores === undefined) {
+    if (CpuInfo.getNumLogicalCores() === undefined) {
       return CapabilityState.UNKNOWN;
     }
-    if (WebCapabilities.numCores < 2) {
+    if (CpuInfo.getNumLogicalCores() < 2) {
       return CapabilityState.NOT_CAPABLE;
     }
     return CapabilityState.CAPABLE;
@@ -69,10 +67,10 @@ export class WebCapabilities {
    * @returns A {@link CapabilityState}.
    */
   static isCapableOfSending1080pVideo(): CapabilityState {
-    if (WebCapabilities.numCores === undefined) {
+    if (CpuInfo.getNumLogicalCores() === undefined) {
       return CapabilityState.UNKNOWN;
     }
-    if (WebCapabilities.numCores < 8) {
+    if (CpuInfo.getNumLogicalCores() < 8) {
       return CapabilityState.NOT_CAPABLE;
     }
     return CapabilityState.CAPABLE;
