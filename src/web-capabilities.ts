@@ -74,7 +74,7 @@ export class WebCapabilities {
     if (numCores === undefined) {
       return CapabilityState.UNKNOWN;
     }
-    if (numCores < 2) {
+    if (numCores < 8) {
       return CapabilityState.NOT_CAPABLE;
     }
     return CapabilityState.CAPABLE;
