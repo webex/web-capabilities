@@ -1,5 +1,5 @@
 /**
- * Provides information about the CPU.
+ * A class that provides information about the CPU.
  */
 export class CpuInfo {
   /**
