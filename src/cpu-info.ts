@@ -7,7 +7,7 @@ export class CpuInfo {
    *
    * @returns The number of logical CPU cores, or undefined if not available.
    */
-  static getNumLogicalCores(): number | undefined{
+  static getNumLogicalCores(): number | undefined {
     return navigator.hardwareConcurrency;
   }
 }
