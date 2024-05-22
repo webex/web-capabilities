@@ -24,6 +24,19 @@ if (BrowserInfo.isChrome() && BrowserInfo.isSubVersionOf('110')) {
 }
 ```
 
+Use the `CpuInfo` class to check certain details about the CPU.
+
+```javascript
+import { CpuInfo } from '@webex/web-capabilities';
+
+const logicalCores = CpuInfo.getNumLogicalCores();
+
+if (logicalCores) {
+    console.log(`Number of logical CPU cores: ${logicalCores}`);
+}
+```
+
+
 # Setup
 
 1. Run `yarn` to install dependencies.
