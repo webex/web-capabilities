@@ -22,10 +22,11 @@ export class WebCapabilities {
    * @returns A {@link CapabilityState}.
    */
   static isCapableOfBackgroundNoiseRemoval(): CapabilityState {
-    if (CpuInfo.getNumLogicalCores() === undefined) {
+    const numCores = CpuInfo.getNumLogicalCores();
+    if (numCores === undefined) {
       return CapabilityState.UNKNOWN;
     }
-    if (CpuInfo.getNumLogicalCores() < 2) {
+    if (numCores < 2) {
       return CapabilityState.NOT_CAPABLE;
     }
     return CapabilityState.CAPABLE;
@@ -37,10 +38,11 @@ export class WebCapabilities {
    * @returns A {@link CapabilityState}.
    */
   static isCapableOfVirtualBackground(): CapabilityState {
-    if (CpuInfo.getNumLogicalCores() === undefined) {
+    const numCores = CpuInfo.getNumLogicalCores();
+    if (numCores === undefined) {
       return CapabilityState.UNKNOWN;
     }
-    if (CpuInfo.getNumLogicalCores() < 2) {
+    if (numCores < 2) {
       return CapabilityState.NOT_CAPABLE;
     }
     return CapabilityState.CAPABLE;
@@ -52,10 +54,11 @@ export class WebCapabilities {
    * @returns A {@link CapabilityState}.
    */
   static isCapableOfReceiving1080pVideo(): CapabilityState {
-    if (CpuInfo.getNumLogicalCores() === undefined) {
+    const numCores = CpuInfo.getNumLogicalCores();
+    if (numCores === undefined) {
       return CapabilityState.UNKNOWN;
     }
-    if (CpuInfo.getNumLogicalCores() < 2) {
+    if (numCores < 2) {
       return CapabilityState.NOT_CAPABLE;
     }
     return CapabilityState.CAPABLE;
@@ -67,10 +70,11 @@ export class WebCapabilities {
    * @returns A {@link CapabilityState}.
    */
   static isCapableOfSending1080pVideo(): CapabilityState {
-    if (CpuInfo.getNumLogicalCores() === undefined) {
+    const numCores = CpuInfo.getNumLogicalCores();
+    if (numCores === undefined) {
       return CapabilityState.UNKNOWN;
     }
-    if (CpuInfo.getNumLogicalCores() < 8) {
+    if (numCores < 2) {
       return CapabilityState.NOT_CAPABLE;
     }
     return CapabilityState.CAPABLE;

@@ -1,6 +1,6 @@
 import { CpuInfo } from './cpu-info';
 
-describe('CpuInfo', () => {
+describe('getNumLogicalCores', () => {
   it('should get CPU information when available', () => {
     expect.assertions(1);
 
