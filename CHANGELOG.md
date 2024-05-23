@@ -1,3 +1,10 @@
+# [1.3.0](https://github.com/webex/web-capabilities/compare/v1.2.0...v1.3.0) (2024-05-23)
+
+
+### Features
+
+* expose cpu info ([#6](https://github.com/webex/web-capabilities/issues/6)) ([6e43d38](https://github.com/webex/web-capabilities/commit/6e43d386699fea497d5f5e4b9d446cb032a5452b))
+
 # [1.2.0](https://github.com/webex/web-capabilities/compare/v1.1.1...v1.2.0) (2023-10-20)
 
 
