@@ -11,6 +11,15 @@ export enum BrowserName {
 }
 
 /**
+ * Used by the {@link BrowserInfo} class to check the name of the OS.
+ */
+export enum OSName {
+  WINDOWS = 'Windows',
+  MAC = 'macOS',
+  LINUX = 'Linux',
+}
+
+/**
  * A class that retrieves and checks certain information about the browser.
  */
 export class BrowserInfo {
@@ -86,6 +95,33 @@ export class BrowserInfo {
    */
   static isSafari(): boolean {
     return this.browser.getBrowserName() === BrowserName.SAFARI;
+  }
+
+  /**
+   * Check if current OS is Windows.
+   *
+   * @returns True if Windows, false otherwise.
+   */
+  static isWindows(): boolean {
+    return this.browser.getOSName() === OSName.WINDOWS;
+  }
+
+  /**
+   * Check if current OS is Mac.
+   *
+   * @returns True if Mac, false otherwise.
+   */
+  static isMac(): boolean {
+    return this.browser.getOSName() === OSName.MAC;
+  }
+
+  /**
+   * Check if current OS is Linux.
+   *
+   * @returns True if Linux, false otherwise.
+   */
+  static isLinux(): boolean {
+    return this.browser.getOSName() === OSName.LINUX;
   }
 
   /**

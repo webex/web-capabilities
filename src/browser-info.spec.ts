@@ -14,8 +14,7 @@ const mockUserAgent = (browserName: BrowserName): void => {
         'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/118.0.0.0 Safari/537.36';
       break;
     case BrowserName.FIREFOX:
-      userAgent =
-        'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/118.0';
+      userAgent = 'Mozilla/5.0 (X11; Linux i686; rv:128.0) Gecko/20100101 Firefox/128.0';
       break;
     case BrowserName.EDGE:
       userAgent =
@@ -105,6 +104,35 @@ describe('BrowserInfo', () => {
       expect(BrowserInfo.isFirefox()).toBeFalsy();
       expect(BrowserInfo.isEdge()).toBeFalsy();
       expect(BrowserInfo.isSafari()).toBeTruthy();
+    });
+  });
+
+  describe('identifying operating systems', () => {
+    it('should identify a Windows OS', () => {
+      expect.hasAssertions();
+      mockUserAgent(BrowserName.CHROME);
+
+      expect(BrowserInfo.isWindows()).toBeTruthy();
+      expect(BrowserInfo.isMac()).toBeFalsy();
+      expect(BrowserInfo.isLinux()).toBeFalsy();
+    });
+
+    it('should identify a Mac OS', () => {
+      expect.hasAssertions();
+      mockUserAgent(BrowserName.SAFARI);
+
+      expect(BrowserInfo.isWindows()).toBeFalsy();
+      expect(BrowserInfo.isMac()).toBeTruthy();
+      expect(BrowserInfo.isLinux()).toBeFalsy();
+    });
+
+    it('should identify a Linux OS', () => {
+      expect.hasAssertions();
+      mockUserAgent(BrowserName.FIREFOX);
+
+      expect(BrowserInfo.isWindows()).toBeFalsy();
+      expect(BrowserInfo.isMac()).toBeFalsy();
+      expect(BrowserInfo.isLinux()).toBeTruthy();
     });
   });
 
