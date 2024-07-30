@@ -1,3 +1,10 @@
+# [1.4.0](https://github.com/webex/web-capabilities/compare/v1.3.0...v1.4.0) (2024-07-30)
+
+
+### Features
+
+* add helpers for determining OS ([#8](https://github.com/webex/web-capabilities/issues/8)) ([984a349](https://github.com/webex/web-capabilities/commit/984a349a6674ffdb284a1fc15629917f45f6dfd5))
+
 # [1.3.0](https://github.com/webex/web-capabilities/compare/v1.2.0...v1.3.0) (2024-05-23)
 
 
