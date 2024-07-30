@@ -1,3 +1,10 @@
+## [1.4.1](https://github.com/webex/web-capabilities/compare/v1.4.0...v1.4.1) (2024-07-30)
+
+
+### Bug Fixes
+
+* use token for semantic release ([#9](https://github.com/webex/web-capabilities/issues/9)) ([d000bd0](https://github.com/webex/web-capabilities/commit/d000bd0459f1f8bda975fc4a1990d28541dfd321))
+
 # [1.4.0](https://github.com/webex/web-capabilities/compare/v1.3.0...v1.4.0) (2024-07-30)
 
 
