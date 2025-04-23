@@ -1,3 +1,10 @@
+# [1.5.0](https://github.com/webex/web-capabilities/compare/v1.4.1...v1.5.0) (2025-04-23)
+
+
+### Features
+
+* upgrade to node 22 and yarn 1.22.22 ([#10](https://github.com/webex/web-capabilities/issues/10)) ([11b588b](https://github.com/webex/web-capabilities/commit/11b588b65aa605233d2724b7f389f98b20b1976d))
+
 ## [1.4.1](https://github.com/webex/web-capabilities/compare/v1.4.0...v1.4.1) (2024-07-30)
 
 
