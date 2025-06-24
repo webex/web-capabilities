@@ -1,6 +1,4 @@
 /* eslint-disable max-classes-per-file */
-import { EventEmitter } from 'events';
-
 // https://w3c.github.io/compute-pressure/#pressure-states
 // ⚪ Nominal: Work is minimal and the system is running on lower clock speed to preserve power.
 //
@@ -18,7 +16,7 @@ import { EventEmitter } from 'events';
 //               but this state is not sustainable for the long run and might result in throttling if the workload remains the same.
 //               This signal is the last call for the web application to lighten its workload.
 
-type PressureState = 'nominal' | 'fair' | 'serious' | 'critical';
+export type PressureState = 'nominal' | 'fair' | 'serious' | 'critical';
 
 interface PressureRecord {
   source: string;
@@ -26,31 +24,25 @@ interface PressureRecord {
   time: number;
 }
 
-export enum ComputePressureEvents {
-  CpuPressureStateChange = 'cpu-pressure-state-change',
-}
-
 /**
- * Events emitted by the ComputePressureObserver.
+ * SystemInfo class to manage system information and pressure states.
  */
-class ComputePressureObserver extends EventEmitter {
+class SystemInfoInternal {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   private observer?: any;
 
+  private lastCpuPressure?: PressureState = undefined;
+
   /**
-   * Creates an instance of ComputePressureObserver.
+   * Creates an instance of SystemInfo.
    */
   constructor() {
-    super();
-
     if ('PressureObserver' in window) {
       // eslint-disable-next-line @typescript-eslint/ban-ts-comment
       // @ts-ignore
-      this.observer = new PressureObserver(this.onUpdate.bind(this));
+      this.observer = new PressureObserver(this.handleStateChange.bind(this));
 
-      this.observer.observe('cpu', {
-        sampleInterval: 1000,
-      });
+      this.observer.observe('cpu');
     }
   }
 
@@ -59,43 +51,12 @@ class ComputePressureObserver extends EventEmitter {
    *
    * @param records - The records from the PressureObserver.
    */
-  private onUpdate(records: PressureRecord[]) {
+  private handleStateChange(records: PressureRecord[]) {
     records.forEach((record: PressureRecord) => {
       if (record.source === 'cpu') {
-        this.emit(ComputePressureEvents.CpuPressureStateChange, record.state);
+        this.lastCpuPressure = record.state;
       }
     });
-  }
-}
-
-/**
- * SystemInfo class to manage system information and pressure states.
- */
-export default class SystemInfo {
-  private static observer?: ComputePressureObserver = undefined;
-
-  private static lastCpuPressure?: PressureState = undefined;
-
-  /**
-   * Retrieves the ComputePressureObserver instance, creating it if it doesn't exist.
-   *
-   * @returns The ComputePressureObserver instance.
-   */
-  private static getObserver(): ComputePressureObserver | undefined {
-    if (this.observer) {
-      return this.observer;
-    }
-
-    if ('PressureObserver' in window) {
-      // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-      // @ts-ignore
-      this.observer = new ComputePressureObserver();
-      this.observer.on(ComputePressureEvents.CpuPressureStateChange, (state: PressureState) => {
-        this.lastCpuPressure = state;
-      });
-    }
-
-    return this.observer;
   }
 
   /**
@@ -103,27 +64,23 @@ export default class SystemInfo {
    *
    * @returns The current CPU pressure state, or undefined if API is not supported.
    */
-  static async getCpuPressure(): Promise<PressureState | undefined> {
-    if (this.lastCpuPressure) {
-      return Promise.resolve(this.lastCpuPressure);
-    }
+  getCpuPressure(): PressureState | undefined {
+    return this.lastCpuPressure;
+  }
+}
 
-    const observer = this.getObserver();
-    if (!observer) {
-      return Promise.resolve(undefined);
-    }
+const systemInfo = new SystemInfoInternal();
 
-    return new Promise((resolve) => {
-      // eslint-disable-next-line jsdoc/require-jsdoc
-      const handleFirstUpdate = (records: PressureState) => {
-        this.lastCpuPressure = records;
-
-        observer.removeListener('cpu-pressure-state-change', handleFirstUpdate);
-
-        resolve(records);
-      };
-
-      observer.addListener(ComputePressureEvents.CpuPressureStateChange, handleFirstUpdate);
-    });
+/**
+ * SystemInfo class to provide static methods for system information.
+ */
+export class SystemInfo {
+  /**
+   * Gets the current CPU pressure state.
+   *
+   * @returns The current CPU pressure state, or undefined if API is not supported.
+   */
+  static getCpuPressure(): PressureState | undefined {
+    return systemInfo.getCpuPressure();
   }
 }
