@@ -46,7 +46,7 @@ class SystemInfoInternal extends EventEmitter {
   constructor() {
     super();
 
-    if ('PressureObserver' in window) {
+    if (SystemInfoInternal.isPressureObserverSupported()) {
       // eslint-disable-next-line @typescript-eslint/ban-ts-comment
       // @ts-ignore
       this.observer = new PressureObserver(this.handleStateChange.bind(this));
@@ -78,6 +78,15 @@ class SystemInfoInternal extends EventEmitter {
   getCpuPressure(): PressureState | undefined {
     return this.lastCpuPressure;
   }
+
+  /**
+   * Checks if the Compute Pressure API is supported in the current environment.
+   *
+   * @returns True if the Compute Pressure API is supported, false otherwise.
+   */
+  static isPressureObserverSupported(): boolean {
+    return 'PressureObserver' in window;
+  }
 }
 
 const systemInfo = new SystemInfoInternal();
@@ -87,11 +96,24 @@ const systemInfo = new SystemInfoInternal();
  */
 export class SystemInfo {
   /**
+   * Checks if the Compute Pressure API is supported in the current environment.
+   *
+   * @returns True if the Compute Pressure API is supported, false otherwise.
+   */
+  static isPressureObserverSupported(): boolean {
+    return SystemInfoInternal.isPressureObserverSupported();
+  }
+
+  /**
    * Gets the current CPU pressure state.
    *
    * @returns The current CPU pressure state, or undefined if API is not supported.
    */
   static getCpuPressure(): PressureState | undefined {
+    if (!SystemInfo.isPressureObserverSupported()) {
+      return undefined;
+    }
+
     return systemInfo.getCpuPressure();
   }
 
@@ -101,6 +123,19 @@ export class SystemInfo {
    * @param callback - Callback to be called when the CPU pressure state changes.
    */
   static onCpuPressureChange(callback: (state: PressureState) => void): void {
+    if (!SystemInfo.isPressureObserverSupported()) {
+      throw new Error('PressureObserver is not supported in this environment.');
+    }
+
     systemInfo.on(SystemInfoEvents.CpuPressureStateChange, callback);
+  }
+
+  /**
+   * Gets the number of logical CPU cores.
+   *
+   * @returns The number of logical CPU cores, or undefined if not available.
+   */
+  static getNumLogicalCores(): number | undefined {
+    return navigator.hardwareConcurrency;
   }
 }
