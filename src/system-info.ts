@@ -131,6 +131,19 @@ export class SystemInfo {
   }
 
   /**
+   * Unregisters a callback that was registered to be called when the CPU pressure state changes.
+   *
+   * @param callback - Callback to be called when the CPU pressure state changes.
+   */
+  static offCpuPressureChange(callback: (state: PressureState) => void): void {
+    if (!SystemInfo.isPressureObserverSupported()) {
+      throw new Error('PressureObserver is not supported in this environment.');
+    }
+
+    systemInfo.off(SystemInfoEvents.CpuPressureStateChange, callback);
+  }
+
+  /**
    * Gets the number of logical CPU cores.
    *
    * @returns The number of logical CPU cores, or undefined if not available.

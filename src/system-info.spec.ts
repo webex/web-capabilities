@@ -130,6 +130,39 @@ describe('SystemInfo', () => {
         pressureObserverCallback([{ source: 'cpu', state: 'nominal' }]);
         expect(callback).toHaveBeenCalledWith('nominal');
       });
+
+      it('should not call the callback if the CPU pressure state does not change', () => {
+        expect.hasAssertions();
+
+        const callback = jest.fn();
+        SystemInfo.onCpuPressureChange(callback);
+
+        // Call with the same state
+        pressureObserverCallback([{ source: 'cpu', state: 'nominal' }]);
+        expect(callback).not.toHaveBeenCalled();
+
+        // Call with a different state
+        pressureObserverCallback([{ source: 'cpu', state: 'fair' }]);
+        expect(callback).toHaveBeenCalledWith('fair');
+      });
+
+      it('should not emit if callback was deregistered', () => {
+        expect.hasAssertions();
+
+        const callback = jest.fn();
+        SystemInfo.onCpuPressureChange(callback);
+
+        // Call with the same state
+        pressureObserverCallback([{ source: 'cpu', state: 'nominal' }]);
+        expect(callback).toHaveBeenCalledWith('nominal');
+
+        // Deregister the callback
+        SystemInfo.offCpuPressureChange(callback);
+
+        // Call with a different state
+        pressureObserverCallback([{ source: 'cpu', state: 'fair' }]);
+        expect(callback).toHaveBeenCalledTimes(1); // Should not be called again
+      });
     });
 
     describe('when PressureObserver is not supported', () => {
