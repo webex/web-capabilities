@@ -1,4 +1,7 @@
 /* eslint-disable max-classes-per-file */
+
+import { EventEmitter } from 'events';
+
 // https://w3c.github.io/compute-pressure/#pressure-states
 // ⚪ Nominal: Work is minimal and the system is running on lower clock speed to preserve power.
 //
@@ -18,6 +21,10 @@
 
 export type PressureState = 'nominal' | 'fair' | 'serious' | 'critical';
 
+export enum SystemInfoEvents {
+  CpuPressureStateChange = 'cpu-pressure-state-change',
+}
+
 interface PressureRecord {
   source: string;
   state: PressureState;
@@ -27,7 +34,7 @@ interface PressureRecord {
 /**
  * SystemInfo class to manage system information and pressure states.
  */
-class SystemInfoInternal {
+class SystemInfoInternal extends EventEmitter {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   private observer?: any;
 
@@ -37,6 +44,8 @@ class SystemInfoInternal {
    * Creates an instance of SystemInfo.
    */
   constructor() {
+    super();
+
     if ('PressureObserver' in window) {
       // eslint-disable-next-line @typescript-eslint/ban-ts-comment
       // @ts-ignore
@@ -53,8 +62,10 @@ class SystemInfoInternal {
    */
   private handleStateChange(records: PressureRecord[]) {
     records.forEach((record: PressureRecord) => {
-      if (record.source === 'cpu') {
+      if (record.source === 'cpu' && record.state !== this.lastCpuPressure) {
         this.lastCpuPressure = record.state;
+
+        this.emit(SystemInfoEvents.CpuPressureStateChange, record.state);
       }
     });
   }
@@ -82,5 +93,14 @@ export class SystemInfo {
    */
   static getCpuPressure(): PressureState | undefined {
     return systemInfo.getCpuPressure();
+  }
+
+  /**
+   * Registers a callback to be called when the CPU pressure state changes.
+   *
+   * @param callback - Callback to be called when the CPU pressure state changes.
+   */
+  static onCpuPressureChange(callback: (state: PressureState) => void): void {
+    systemInfo.on(SystemInfoEvents.CpuPressureStateChange, callback);
   }
 }
