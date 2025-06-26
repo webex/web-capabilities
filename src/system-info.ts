@@ -55,7 +55,7 @@ export enum SystemInfoEvents {
 
 /**
  * PressureObserverHelper class to wrap the PressureObserver API
- * and provide a simple interface for observing CPU pressure state changes.
+ * and provide a simple interface for observing pressure state changes.
  */
 class PressureObserverHelper extends EventEmitter {
   private observer?: PressureObserver;
@@ -63,7 +63,7 @@ class PressureObserverHelper extends EventEmitter {
   private lastCpuPressure?: PressureState = undefined;
 
   /**
-   * Creates an instance of SystemInfo.
+   * Creates an instance of PressureObserverHelper.
    */
   constructor() {
     super();
