@@ -2,6 +2,13 @@
 
 import { EventEmitter } from 'events';
 
+// PressureObserver is a W3C standard API that provides information about the system's pressure state.
+// It allows web applications to observe the pressure state of the system, which can help them adapt
+// their behavior based on the system's performance and resource availability.
+// Pressure API is supported in modern browsers, but it is not available in all environments.
+// Currently, it's not supported by TypeScript, so we need to define the types ourselves.
+// NOTE: Consider removing this once TypeScript supports PressureObserver.
+
 // https://w3c.github.io/compute-pressure/#pressure-states
 // ⚪ Nominal: Work is minimal and the system is running on lower clock speed to preserve power.
 //
@@ -47,9 +54,10 @@ export enum SystemInfoEvents {
 }
 
 /**
- * SystemInfo class to manage system information and pressure states.
+ * PressureObserverHelper class to wrap the PressureObserver API
+ * and provide a simple interface for observing CPU pressure state changes.
  */
-class SystemInfoInternal extends EventEmitter {
+class PressureObserverHelper extends EventEmitter {
   private observer?: PressureObserver;
 
   private lastCpuPressure?: PressureState = undefined;
@@ -60,7 +68,7 @@ class SystemInfoInternal extends EventEmitter {
   constructor() {
     super();
 
-    if (SystemInfoInternal.isPressureObserverSupported()) {
+    if (PressureObserverHelper.isPressureObserverSupported()) {
       // eslint-disable-next-line @typescript-eslint/ban-ts-comment
       // @ts-ignore
       this.observer = new PressureObserver(this.handleStateChange.bind(this));
@@ -104,7 +112,7 @@ class SystemInfoInternal extends EventEmitter {
   }
 }
 
-const systemInfo = new SystemInfoInternal();
+const pressureObserverHelper = new PressureObserverHelper();
 
 /**
  * SystemInfo class to provide static methods for system information.
@@ -116,7 +124,7 @@ export class SystemInfo {
    * @returns True if the Compute Pressure API is supported, false otherwise.
    */
   static isPressureObserverSupported(): boolean {
-    return SystemInfoInternal.isPressureObserverSupported();
+    return PressureObserverHelper.isPressureObserverSupported();
   }
 
   /**
@@ -129,7 +137,7 @@ export class SystemInfo {
       return undefined;
     }
 
-    return systemInfo.getCpuPressure();
+    return pressureObserverHelper.getCpuPressure();
   }
 
   /**
@@ -142,7 +150,7 @@ export class SystemInfo {
       throw new Error('PressureObserver is not supported in this environment.');
     }
 
-    systemInfo.on(SystemInfoEvents.CpuPressureStateChange, callback);
+    pressureObserverHelper.on(SystemInfoEvents.CpuPressureStateChange, callback);
 
     // There might be possibility that the CPU pressure state has already changed
     // before the callback was registered, so we check the current state
@@ -163,7 +171,7 @@ export class SystemInfo {
       throw new Error('PressureObserver is not supported in this environment.');
     }
 
-    systemInfo.off(SystemInfoEvents.CpuPressureStateChange, callback);
+    pressureObserverHelper.off(SystemInfoEvents.CpuPressureStateChange, callback);
   }
 
   /**
