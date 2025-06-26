@@ -19,11 +19,9 @@ import { EventEmitter } from 'events';
 //               but this state is not sustainable for the long run and might result in throttling if the workload remains the same.
 //               This signal is the last call for the web application to lighten its workload.
 
-export type PressureState = 'nominal' | 'fair' | 'serious' | 'critical';
+export type PressureSource = 'cpu';
 
-export enum SystemInfoEvents {
-  CpuPressureStateChange = 'cpu-pressure-state-change',
-}
+export type PressureState = 'nominal' | 'fair' | 'serious' | 'critical';
 
 interface PressureRecord {
   source: string;
@@ -31,12 +29,28 @@ interface PressureRecord {
   time: number;
 }
 
+interface PressureObserver {
+  observe(source: PressureSource): Promise<void>;
+  unobserve(source: PressureSource): void;
+  disconnect(): void;
+  takeRecords(): PressureRecord[];
+}
+
+declare global {
+  interface Window {
+    PressureObserver?: PressureObserver;
+  }
+}
+
+export enum SystemInfoEvents {
+  CpuPressureStateChange = 'cpu-pressure-state-change',
+}
+
 /**
  * SystemInfo class to manage system information and pressure states.
  */
 class SystemInfoInternal extends EventEmitter {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  private observer?: any;
+  private observer?: PressureObserver;
 
   private lastCpuPressure?: PressureState = undefined;
 
@@ -50,8 +64,9 @@ class SystemInfoInternal extends EventEmitter {
       // eslint-disable-next-line @typescript-eslint/ban-ts-comment
       // @ts-ignore
       this.observer = new PressureObserver(this.handleStateChange.bind(this));
-
-      this.observer.observe('cpu');
+      if (this.observer) {
+        this.observer.observe('cpu');
+      }
     }
   }
 
@@ -128,6 +143,14 @@ export class SystemInfo {
     }
 
     systemInfo.on(SystemInfoEvents.CpuPressureStateChange, callback);
+
+    // There might be possibility that the CPU pressure state has already changed
+    // before the callback was registered, so we check the current state
+    // and call the callback immediately if the state is available.
+    const state = SystemInfo.getCpuPressure();
+    if (state !== undefined) {
+      callback(state);
+    }
   }
 
   /**

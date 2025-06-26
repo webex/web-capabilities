@@ -33,19 +33,6 @@ Object.defineProperty(window, 'PressureObserver', {
 // eslint-disable-next-line import/first
 import { SystemInfo } from './system-info';
 
-// Extend the Window interface to include PressureObserver
-// NOTE: This is needed for TypeScript to recognize PressureObserver
-//       since it is not a standard part of the Window interface yet.
-declare global {
-  interface Window {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    PressureObserver?: new (callback: (records: any[]) => void) => {
-      observe: (source: string) => void;
-      disconnect: () => void;
-    };
-  }
-}
-
 describe('SystemInfo', () => {
   describe('isPressureObserverSupported', () => {
     it('should return true when PressureObserver is supported', () => {
@@ -137,9 +124,11 @@ describe('SystemInfo', () => {
         const callback = jest.fn();
         SystemInfo.onCpuPressureChange(callback);
 
+        expect(callback).toHaveBeenCalledWith('nominal');
+
         // Call with the same state
         pressureObserverCallback([{ source: 'cpu', state: 'nominal' }]);
-        expect(callback).not.toHaveBeenCalled();
+        expect(callback).toHaveBeenCalledTimes(1); // Should not be called again
 
         // Call with a different state
         pressureObserverCallback([{ source: 'cpu', state: 'fair' }]);
@@ -151,17 +140,19 @@ describe('SystemInfo', () => {
 
         const callback = jest.fn();
         SystemInfo.onCpuPressureChange(callback);
+        expect(callback).toHaveBeenCalledTimes(1);
 
         // Call with the same state
         pressureObserverCallback([{ source: 'cpu', state: 'nominal' }]);
         expect(callback).toHaveBeenCalledWith('nominal');
+        expect(callback).toHaveBeenCalledTimes(2);
 
         // Deregister the callback
         SystemInfo.offCpuPressureChange(callback);
 
         // Call with a different state
         pressureObserverCallback([{ source: 'cpu', state: 'fair' }]);
-        expect(callback).toHaveBeenCalledTimes(1); // Should not be called again
+        expect(callback).toHaveBeenCalledTimes(2); // Should not be called again
       });
     });
 
