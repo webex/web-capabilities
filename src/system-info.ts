@@ -147,7 +147,7 @@ export class SystemInfo {
    */
   static onCpuPressureChange(callback: (state: PressureState) => void): void {
     if (!SystemInfo.isPressureObserverSupported()) {
-      throw new Error('PressureObserver is not supported in this environment.');
+      return;
     }
 
     pressureObserverHelper.on(SystemInfoEvents.CpuPressureStateChange, callback);
@@ -168,7 +168,7 @@ export class SystemInfo {
    */
   static offCpuPressureChange(callback: (state: PressureState) => void): void {
     if (!SystemInfo.isPressureObserverSupported()) {
-      throw new Error('PressureObserver is not supported in this environment.');
+      return;
     }
 
     pressureObserverHelper.off(SystemInfoEvents.CpuPressureStateChange, callback);

@@ -162,11 +162,14 @@ describe('SystemInfo', () => {
         delete window.PressureObserver;
       });
 
-      it('should throw', () => {
+      it('should not attach listener', () => {
         expect.hasAssertions();
 
         const callback = jest.fn();
-        expect(() => SystemInfo.onCpuPressureChange(callback)).toThrow(expect.anything());
+
+        SystemInfo.onCpuPressureChange(callback);
+
+        expect(callback).toHaveBeenCalledTimes(0);
       });
     });
   });
