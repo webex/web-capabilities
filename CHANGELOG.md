@@ -1,3 +1,10 @@
+# [1.6.0](https://github.com/webex/web-capabilities/compare/v1.5.0...v1.6.0) (2025-06-27)
+
+
+### Features
+
+* support system info driven by pressure api ([#11](https://github.com/webex/web-capabilities/issues/11)) ([e01803c](https://github.com/webex/web-capabilities/commit/e01803cbf0e348865e487d3066072b79f99a47ba))
+
 # [1.5.0](https://github.com/webex/web-capabilities/compare/v1.4.1...v1.5.0) (2025-04-23)
 
 
