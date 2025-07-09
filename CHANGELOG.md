@@ -1,3 +1,10 @@
+## [1.6.1](https://github.com/webex/web-capabilities/compare/v1.6.0...v1.6.1) (2025-07-09)
+
+
+### Bug Fixes
+
+* node engines ([#12](https://github.com/webex/web-capabilities/issues/12)) ([21ee734](https://github.com/webex/web-capabilities/commit/21ee7341fbefd5bfa6a37317f0ad2981a596febc))
+
 # [1.6.0](https://github.com/webex/web-capabilities/compare/v1.5.0...v1.6.0) (2025-06-27)
 
 
