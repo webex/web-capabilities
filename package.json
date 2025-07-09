@@ -43,7 +43,7 @@
   "author": "",
   "license": "MIT",
   "engines": {
-    "node": ">=22.0.0",
+    "node": ">=18.18.0",
     "npm": "please-use-yarn",
     "yarn": ">=1.22.0"
   },
