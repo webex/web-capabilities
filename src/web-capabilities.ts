@@ -79,4 +79,15 @@ export class WebCapabilities {
     }
     return CapabilityState.CAPABLE;
   }
+
+  /**
+   * Checks whether the browser supports encoded stream transforms.
+   *
+   * @returns A {@link CapabilityState}.
+   */
+  static supportsEncodedStreamTransforms(): CapabilityState {
+    return window.RTCRtpSender && 'transform' in RTCRtpSender.prototype
+      ? CapabilityState.CAPABLE
+      : CapabilityState.NOT_CAPABLE;
+  }
 }

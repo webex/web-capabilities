@@ -40,4 +40,59 @@ describe('WebCapabilities', () => {
     expect(WebCapabilities.isCapableOfReceiving1080pVideo()).toBe(CapabilityState.CAPABLE);
     expect(WebCapabilities.isCapableOfSending1080pVideo()).toBe(CapabilityState.CAPABLE);
   });
+  describe('supportsEncodedStreamTransforms', () => {
+    afterEach(() => {
+      // Clean up window modifications
+      delete (window as Window & { RTCRtpSender?: unknown }).RTCRtpSender;
+    });
+
+    it('should return CAPABLE when encoded transforms are supported', () => {
+      expect.assertions(1);
+
+      /**
+       * Mock RTCRtpSender constructor for testing.
+       */
+      // eslint-disable-next-line @typescript-eslint/no-empty-function
+      const MockRTCRtpSender = function MockRTCRtpSender() {};
+      MockRTCRtpSender.prototype = {
+        transform: {},
+      };
+
+      Object.defineProperty(window, 'RTCRtpSender', {
+        writable: true,
+        configurable: true,
+        value: MockRTCRtpSender,
+      });
+
+      expect(WebCapabilities.supportsEncodedStreamTransforms()).toBe(CapabilityState.CAPABLE);
+    });
+
+    it('should return NOT_CAPABLE when RTCRtpSender is not available', () => {
+      expect.assertions(1);
+
+      // Ensure RTCRtpSender is not available
+      delete (window as Window & { RTCRtpSender?: unknown }).RTCRtpSender;
+
+      expect(WebCapabilities.supportsEncodedStreamTransforms()).toBe(CapabilityState.NOT_CAPABLE);
+    });
+
+    it('should return NOT_CAPABLE when transform is not in RTCRtpSender prototype', () => {
+      expect.assertions(1);
+
+      /**
+       * Mock RTCRtpSender constructor without transform property.
+       */
+      // eslint-disable-next-line @typescript-eslint/no-empty-function
+      const MockRTCRtpSender = function MockRTCRtpSender() {};
+      MockRTCRtpSender.prototype = {};
+
+      Object.defineProperty(window, 'RTCRtpSender', {
+        writable: true,
+        configurable: true,
+        value: MockRTCRtpSender,
+      });
+
+      expect(WebCapabilities.supportsEncodedStreamTransforms()).toBe(CapabilityState.NOT_CAPABLE);
+    });
+  });
 });
