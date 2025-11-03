@@ -95,4 +95,39 @@ describe('WebCapabilities', () => {
       expect(WebCapabilities.supportsEncodedStreamTransforms()).toBe(CapabilityState.NOT_CAPABLE);
     });
   });
+  describe('isCapableOfReceivingVideoCodec', () => {
+    afterEach(() => {
+      // Clean up window modifications
+      delete (window as Window & { RTCRtpReceiver?: unknown }).RTCRtpReceiver;
+    });
+
+    it('should return CAPABLE when the codec is supported', () => {
+      expect.assertions(1);
+      Object.defineProperty(window, 'RTCRtpReceiver', {
+        writable: true,
+        value: {
+          getCapabilities: jest.fn().mockReturnValue({
+            codecs: [{ mimeType: 'video/AV1' }],
+          } as unknown as RTCRtpCapabilities),
+        },
+      });
+      expect(WebCapabilities.isCapableOfReceivingVideoCodec('video/AV1')).toBe(
+        CapabilityState.CAPABLE
+      );
+    });
+    it('should return NOT_CAPABLE when the codec is not supported', () => {
+      expect.assertions(1);
+      Object.defineProperty(window, 'RTCRtpReceiver', {
+        writable: true,
+        value: {
+          getCapabilities: jest.fn().mockReturnValue({
+            codecs: [{ mimeType: 'video/H264' }],
+          } as unknown as RTCRtpCapabilities),
+        },
+      });
+      expect(WebCapabilities.isCapableOfReceivingVideoCodec('video/AV1')).toBe(
+        CapabilityState.NOT_CAPABLE
+      );
+    });
+  });
 });
