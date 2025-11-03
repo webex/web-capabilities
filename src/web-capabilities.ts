@@ -86,7 +86,12 @@ export class WebCapabilities {
    * @returns A {@link CapabilityState}.
    */
   static supportsEncodedStreamTransforms(): CapabilityState {
-    return window.RTCRtpSender && 'transform' in RTCRtpSender.prototype
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    return (window as any).RTCRtpScriptTransform &&
+      window.RTCRtpSender &&
+      'transform' in RTCRtpSender.prototype &&
+      window.RTCRtpReceiver &&
+      'transform' in RTCRtpReceiver.prototype
       ? CapabilityState.CAPABLE
       : CapabilityState.NOT_CAPABLE;
   }
