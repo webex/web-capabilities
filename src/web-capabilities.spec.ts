@@ -103,6 +103,7 @@ describe('WebCapabilities', () => {
 
     it('should return CAPABLE when the codec is supported', () => {
       expect.assertions(1);
+
       Object.defineProperty(window, 'RTCRtpReceiver', {
         writable: true,
         value: {
@@ -111,12 +112,15 @@ describe('WebCapabilities', () => {
           } as unknown as RTCRtpCapabilities),
         },
       });
+
       expect(WebCapabilities.isCapableOfReceivingVideoCodec('video/AV1')).toBe(
         CapabilityState.CAPABLE
       );
     });
+
     it('should return NOT_CAPABLE when the codec is not supported', () => {
       expect.assertions(1);
+
       Object.defineProperty(window, 'RTCRtpReceiver', {
         writable: true,
         value: {
@@ -125,6 +129,7 @@ describe('WebCapabilities', () => {
           } as unknown as RTCRtpCapabilities),
         },
       });
+
       expect(WebCapabilities.isCapableOfReceivingVideoCodec('video/AV1')).toBe(
         CapabilityState.NOT_CAPABLE
       );

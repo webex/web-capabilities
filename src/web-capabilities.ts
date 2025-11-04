@@ -81,34 +81,25 @@ export class WebCapabilities {
   }
 
   /**
+   * Checks whether the browser is capable of receiving a specific video codec.
+   *
+   * @param mimeType - The MIME type of the codec to check.
+   * @returns A {@link CapabilityState}.
+   */
+  static isCapableOfReceivingVideoCodec(mimeType: string): CapabilityState {
+    const codecs = RTCRtpReceiver.getCapabilities('video')?.codecs || [];
+    return codecs.some((codec) => codec.mimeType === mimeType)
+      ? CapabilityState.CAPABLE
+      : CapabilityState.NOT_CAPABLE;
+  }
+
+  /**
    * Checks whether the browser supports encoded stream transforms.
    *
    * @returns A {@link CapabilityState}.
    */
   static supportsEncodedStreamTransforms(): CapabilityState {
     return window.RTCRtpSender && 'transform' in RTCRtpSender.prototype
-      ? CapabilityState.CAPABLE
-      : CapabilityState.NOT_CAPABLE;
-  }
-
-  /**
-   * Checks whether the browser is capable of receiving a specific video codec.
-   *
-   * @param mimeType - The MIME type of the codec to check.
-   * @returns A {@link CapabilityState}.
-   * @example
-   * ```javascript
-   * const state = WebCapabilities.isCapableOfReceivingVideoCodec('video/AV1');
-   * if (state === CapabilityState.CAPABLE) {
-   *   console.log('The browser is capable of receiving AV1 video.');
-   * } else {
-   *   console.log('The browser is not capable of receiving AV1 video.');
-   * }
-   * ```
-   */
-  static isCapableOfReceivingVideoCodec(mimeType: string): CapabilityState {
-    const codecs = RTCRtpReceiver.getCapabilities('video')?.codecs || [];
-    return codecs.some((codec) => codec.mimeType === mimeType)
       ? CapabilityState.CAPABLE
       : CapabilityState.NOT_CAPABLE;
   }
