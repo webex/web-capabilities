@@ -86,7 +86,9 @@ export class WebCapabilities {
    * @param mimeType - The MIME type of the codec to check.
    * @returns A {@link CapabilityState}.
    */
-  static isCapableOfReceivingVideoCodec(mimeType: string): CapabilityState {
+  static isCapableOfReceivingVideoCodec(
+    mimeType: RTCRtpCodecCapability['mimeType']
+  ): CapabilityState {
     const codecs = RTCRtpReceiver.getCapabilities('video')?.codecs || [];
     return codecs.some((codec) => codec.mimeType === mimeType)
       ? CapabilityState.CAPABLE
