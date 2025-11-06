@@ -134,5 +134,20 @@ describe('WebCapabilities', () => {
         CapabilityState.NOT_CAPABLE
       );
     });
+
+    it('should return NOT_CAPABLE when getCapabilities returns undefined', () => {
+      expect.assertions(1);
+
+      Object.defineProperty(window, 'RTCRtpReceiver', {
+        writable: true,
+        value: {
+          getCapabilities: jest.fn().mockReturnValue(undefined),
+        },
+      });
+
+      expect(WebCapabilities.isCapableOfReceivingVideoCodec('video/AV1')).toBe(
+        CapabilityState.NOT_CAPABLE
+      );
+    });
   });
 });
