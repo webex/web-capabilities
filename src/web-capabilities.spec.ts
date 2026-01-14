@@ -206,4 +206,45 @@ describe('WebCapabilities', () => {
       );
     });
   });
+
+  describe('supportsRTCPeerConnection', () => {
+    afterEach(() => {
+      // Clean up window modifications
+      delete (window as Window & { RTCPeerConnection?: unknown }).RTCPeerConnection;
+    });
+
+    /**
+     * Sets up the window object with or without RTCPeerConnection.
+     * @param hasRTCPeerConnection - True when it should exist, false otherwise.
+     */
+    const setupWindow = (hasRTCPeerConnection: boolean) => {
+      if (hasRTCPeerConnection) {
+        /**
+         * Mock RTCPeerConnection constructor for testing.
+         */
+        // eslint-disable-next-line @typescript-eslint/no-empty-function
+        const MockRTCPeerConnection = function MockRTCPeerConnection() {};
+        Object.defineProperty(window, 'RTCPeerConnection', {
+          writable: true,
+          configurable: true,
+          value: MockRTCPeerConnection,
+        });
+      } else {
+        delete (window as Window & { RTCPeerConnection?: unknown }).RTCPeerConnection;
+      }
+    };
+
+    it('returns true when RTCPeerConnection is available', () => {
+      expect.assertions(1);
+      setupWindow(true);
+      expect(WebCapabilities.supportsRTCPeerConnection()).toBe(CapabilityState.CAPABLE);
+    });
+
+    it('returns false when RTCPeerConnection is not available', () => {
+      expect.assertions(1);
+      setupWindow(false);
+
+      expect(WebCapabilities.supportsRTCPeerConnection()).toBe(CapabilityState.NOT_CAPABLE);
+    });
+  });
 });

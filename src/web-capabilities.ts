@@ -110,4 +110,16 @@ export class WebCapabilities {
       ? CapabilityState.CAPABLE
       : CapabilityState.NOT_CAPABLE;
   }
+
+  /**
+   * Checks whether the browser supports RTCPeerConnection. This is needed,
+   * because some users install browser extensions that remove RTCPeerConnection.
+   *
+   * @returns A {@link CapabilityState}.
+   */
+  static supportsRTCPeerConnection(): CapabilityState {
+    return typeof RTCPeerConnection === 'function'
+      ? CapabilityState.CAPABLE
+      : CapabilityState.NOT_CAPABLE;
+  }
 }
