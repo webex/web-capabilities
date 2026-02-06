@@ -1,3 +1,10 @@
+# [1.10.0](https://github.com/webex/web-capabilities/compare/v1.9.0...v1.10.0) (2026-02-06)
+
+
+### Features
+
+* add supportsEncodingCodec method ([#18](https://github.com/webex/web-capabilities/issues/18)) ([fec44a5](https://github.com/webex/web-capabilities/commit/fec44a5949e21b9079c3bca0bd50ec6ab3296175))
+
 # [1.9.0](https://github.com/webex/web-capabilities/compare/v1.8.0...v1.9.0) (2026-01-14)
 
 
