@@ -1,3 +1,4 @@
+import { BrowserInfo } from './browser-info';
 import { CpuInfo } from './cpu-info';
 import { CapabilityState, WebCapabilities } from './web-capabilities';
 
@@ -245,6 +246,174 @@ describe('WebCapabilities', () => {
       setupWindow(false);
 
       expect(WebCapabilities.supportsRTCPeerConnection()).toBe(CapabilityState.NOT_CAPABLE);
+    });
+  });
+
+  describe('supportsEncodingCodec', () => {
+    let isChromeSpy: jest.SpyInstance;
+    let isEdgeSpy: jest.SpyInstance;
+    let isFirefoxSpy: jest.SpyInstance;
+    let isSafariSpy: jest.SpyInstance;
+    let isVersionGreaterThanOrEqualToSpy: jest.SpyInstance;
+
+    /**
+     * Helper function to mock browser information.
+     *
+     * @param options - Configuration for mocking browser info.
+     * @param options.chrome - Whether to mock Chrome browser.
+     * @param options.edge - Whether to mock Edge browser.
+     * @param options.firefox - Whether to mock Firefox browser.
+     * @param options.safari - Whether to mock Safari browser.
+     * @param options.isSupportedVersion - Whether the version check should return true.
+     */
+    const mockBrowser = ({
+      chrome = false,
+      edge = false,
+      firefox = false,
+      safari = false,
+      isSupportedVersion = false,
+    }: {
+      chrome?: boolean;
+      edge?: boolean;
+      firefox?: boolean;
+      safari?: boolean;
+      isSupportedVersion?: boolean;
+    }) => {
+      isChromeSpy.mockReturnValue(chrome);
+      isEdgeSpy.mockReturnValue(edge);
+      isFirefoxSpy.mockReturnValue(firefox);
+      isSafariSpy.mockReturnValue(safari);
+      isVersionGreaterThanOrEqualToSpy.mockReturnValue(isSupportedVersion);
+    };
+
+    beforeEach(() => {
+      isChromeSpy = jest.spyOn(BrowserInfo, 'isChrome');
+      isEdgeSpy = jest.spyOn(BrowserInfo, 'isEdge');
+      isFirefoxSpy = jest.spyOn(BrowserInfo, 'isFirefox');
+      isSafariSpy = jest.spyOn(BrowserInfo, 'isSafari');
+      isVersionGreaterThanOrEqualToSpy = jest.spyOn(BrowserInfo, 'isVersionGreaterThanOrEqualTo');
+    });
+
+    afterEach(() => {
+      jest.restoreAllMocks();
+    });
+
+    describe('chrome', () => {
+      it('should return CAPABLE for version 140', () => {
+        expect.hasAssertions();
+        mockBrowser({ chrome: true, isSupportedVersion: true });
+
+        expect(WebCapabilities.supportsEncodingCodec()).toBe(CapabilityState.CAPABLE);
+        expect(BrowserInfo.isVersionGreaterThanOrEqualTo).toHaveBeenCalledWith('140');
+      });
+
+      it('should return CAPABLE for a higher version', () => {
+        expect.hasAssertions();
+        mockBrowser({ chrome: true, isSupportedVersion: true });
+
+        expect(WebCapabilities.supportsEncodingCodec()).toBe(CapabilityState.CAPABLE);
+      });
+
+      it('should return NOT_CAPABLE for a lower version', () => {
+        expect.hasAssertions();
+        mockBrowser({ chrome: true, isSupportedVersion: false });
+
+        expect(WebCapabilities.supportsEncodingCodec()).toBe(CapabilityState.NOT_CAPABLE);
+      });
+    });
+
+    describe('edge', () => {
+      it('should return CAPABLE for version 140', () => {
+        expect.hasAssertions();
+        mockBrowser({ edge: true, isSupportedVersion: true });
+
+        expect(WebCapabilities.supportsEncodingCodec()).toBe(CapabilityState.CAPABLE);
+        expect(BrowserInfo.isVersionGreaterThanOrEqualTo).toHaveBeenCalledWith('140');
+      });
+
+      it('should return CAPABLE for a higher version', () => {
+        expect.hasAssertions();
+        mockBrowser({ edge: true, isSupportedVersion: true });
+
+        expect(WebCapabilities.supportsEncodingCodec()).toBe(CapabilityState.CAPABLE);
+      });
+
+      it('should return NOT_CAPABLE for a lower version', () => {
+        expect.hasAssertions();
+        mockBrowser({ edge: true, isSupportedVersion: false });
+
+        expect(WebCapabilities.supportsEncodingCodec()).toBe(CapabilityState.NOT_CAPABLE);
+      });
+    });
+
+    describe('firefox', () => {
+      it('should return CAPABLE for version 145', () => {
+        expect.hasAssertions();
+        mockBrowser({ firefox: true, isSupportedVersion: true });
+
+        expect(WebCapabilities.supportsEncodingCodec()).toBe(CapabilityState.CAPABLE);
+        expect(BrowserInfo.isVersionGreaterThanOrEqualTo).toHaveBeenCalledWith('145');
+      });
+
+      it('should return CAPABLE for a higher version', () => {
+        expect.hasAssertions();
+        mockBrowser({ firefox: true, isSupportedVersion: true });
+
+        expect(WebCapabilities.supportsEncodingCodec()).toBe(CapabilityState.CAPABLE);
+      });
+
+      it('should return NOT_CAPABLE for a lower version', () => {
+        expect.hasAssertions();
+        mockBrowser({ firefox: true, isSupportedVersion: false });
+
+        expect(WebCapabilities.supportsEncodingCodec()).toBe(CapabilityState.NOT_CAPABLE);
+      });
+    });
+
+    describe('safari', () => {
+      it('should return NOT_CAPABLE for any version', () => {
+        expect.hasAssertions();
+        mockBrowser({ safari: true });
+
+        expect(WebCapabilities.supportsEncodingCodec()).toBe(CapabilityState.NOT_CAPABLE);
+      });
+
+      it('should return NOT_CAPABLE for a higher version even with version check returning true', () => {
+        expect.hasAssertions();
+        mockBrowser({ safari: true, isSupportedVersion: true });
+
+        expect(WebCapabilities.supportsEncodingCodec()).toBe(CapabilityState.NOT_CAPABLE);
+      });
+
+      it('should return NOT_CAPABLE for a lower version even with version check returning true', () => {
+        expect.hasAssertions();
+        mockBrowser({ safari: true, isSupportedVersion: false });
+
+        expect(WebCapabilities.supportsEncodingCodec()).toBe(CapabilityState.NOT_CAPABLE);
+      });
+    });
+
+    describe('unknown browsers', () => {
+      it('should return NOT_CAPABLE', () => {
+        expect.hasAssertions();
+        mockBrowser({});
+
+        expect(WebCapabilities.supportsEncodingCodec()).toBe(CapabilityState.NOT_CAPABLE);
+      });
+
+      it('should return NOT_CAPABLE even with a higher version check returning true', () => {
+        expect.hasAssertions();
+        mockBrowser({ isSupportedVersion: true });
+
+        expect(WebCapabilities.supportsEncodingCodec()).toBe(CapabilityState.NOT_CAPABLE);
+      });
+
+      it('should return NOT_CAPABLE even with a lower version check returning true', () => {
+        expect.hasAssertions();
+        mockBrowser({ isSupportedVersion: false });
+
+        expect(WebCapabilities.supportsEncodingCodec()).toBe(CapabilityState.NOT_CAPABLE);
+      });
     });
   });
 });
