@@ -44,6 +44,11 @@ export class WebCapabilities {
    * @returns A {@link CapabilityState}.
    */
   static isCapableOfVirtualBackground(): CapabilityState {
+    // Virtual background runs as a WebAssembly module, so it cannot work at all when the runtime
+    // is hard-disabled (such as Chromium jitless mode).
+    if (WebCapabilities.supportsWasm() === CapabilityState.NOT_CAPABLE) {
+      return CapabilityState.NOT_CAPABLE;
+    }
     const numCores = CpuInfo.getNumLogicalCores();
     if (numCores === undefined) {
       return CapabilityState.UNKNOWN;
@@ -118,8 +123,8 @@ export class WebCapabilities {
   }
 
   /**
-   * Checks whether the browser supports the WebAssembly runtime. Some environments hard-disable it,
-   * such as Chromium jitless mode, where the WebAssembly global is removed entirely.
+   * Checks whether the browser supports the WebAssembly runtime, which some environments
+   * hard-disable (such as Chromium jitless mode).
    *
    * @returns A {@link CapabilityState}.
    */

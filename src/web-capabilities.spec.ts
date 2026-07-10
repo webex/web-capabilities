@@ -52,6 +52,17 @@ describe('WebCapabilities', () => {
     (globalThis as { WebAssembly?: typeof WebAssembly }).WebAssembly = originalWebAssembly;
   });
 
+  it('should return NOT_CAPABLE for virtual background when WebAssembly is hard-disabled', () => {
+    expect.assertions(1);
+    const originalWebAssembly = globalThis.WebAssembly;
+    jest.spyOn(CpuInfo, 'getNumLogicalCores').mockReturnValue(8);
+    delete (globalThis as { WebAssembly?: typeof WebAssembly }).WebAssembly;
+
+    expect(WebCapabilities.isCapableOfVirtualBackground()).toBe(CapabilityState.NOT_CAPABLE);
+
+    (globalThis as { WebAssembly?: typeof WebAssembly }).WebAssembly = originalWebAssembly;
+  });
+
   describe('supportsEncodedStreamTransforms', () => {
     afterEach(() => {
       // Clean up window modifications
