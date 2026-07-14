@@ -23,6 +23,11 @@ export class WebCapabilities {
    * @returns A {@link CapabilityState}.
    */
   static isCapableOfBackgroundNoiseRemoval(): CapabilityState {
+    // Background noise removal runs as a WebAssembly module, so it cannot work at all when the
+    // runtime is hard-disabled (such as Chromium jitless mode).
+    if (WebCapabilities.supportsWasm() === CapabilityState.NOT_CAPABLE) {
+      return CapabilityState.NOT_CAPABLE;
+    }
     const numCores = CpuInfo.getNumLogicalCores();
     if (numCores === undefined) {
       return CapabilityState.UNKNOWN;
@@ -39,6 +44,11 @@ export class WebCapabilities {
    * @returns A {@link CapabilityState}.
    */
   static isCapableOfVirtualBackground(): CapabilityState {
+    // Virtual background runs as a WebAssembly module, so it cannot work at all when the runtime
+    // is hard-disabled (such as Chromium jitless mode).
+    if (WebCapabilities.supportsWasm() === CapabilityState.NOT_CAPABLE) {
+      return CapabilityState.NOT_CAPABLE;
+    }
     const numCores = CpuInfo.getNumLogicalCores();
     if (numCores === undefined) {
       return CapabilityState.UNKNOWN;
@@ -108,6 +118,18 @@ export class WebCapabilities {
       'transform' in RTCRtpSender.prototype &&
       window.RTCRtpReceiver &&
       'transform' in RTCRtpReceiver.prototype
+      ? CapabilityState.CAPABLE
+      : CapabilityState.NOT_CAPABLE;
+  }
+
+  /**
+   * Checks whether the browser supports the WebAssembly runtime, which some environments
+   * hard-disable (such as Chromium jitless mode).
+   *
+   * @returns A {@link CapabilityState}.
+   */
+  static supportsWasm(): CapabilityState {
+    return typeof WebAssembly === 'object' && typeof WebAssembly.validate === 'function'
       ? CapabilityState.CAPABLE
       : CapabilityState.NOT_CAPABLE;
   }

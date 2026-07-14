@@ -41,6 +41,28 @@ describe('WebCapabilities', () => {
     expect(WebCapabilities.isCapableOfReceiving1080pVideo()).toBe(CapabilityState.CAPABLE);
     expect(WebCapabilities.isCapableOfSending1080pVideo()).toBe(CapabilityState.CAPABLE);
   });
+  it('should return NOT_CAPABLE for background noise removal when WebAssembly is hard-disabled', () => {
+    expect.assertions(1);
+    const originalWebAssembly = globalThis.WebAssembly;
+    jest.spyOn(CpuInfo, 'getNumLogicalCores').mockReturnValue(8);
+    delete (globalThis as { WebAssembly?: typeof WebAssembly }).WebAssembly;
+
+    expect(WebCapabilities.isCapableOfBackgroundNoiseRemoval()).toBe(CapabilityState.NOT_CAPABLE);
+
+    (globalThis as { WebAssembly?: typeof WebAssembly }).WebAssembly = originalWebAssembly;
+  });
+
+  it('should return NOT_CAPABLE for virtual background when WebAssembly is hard-disabled', () => {
+    expect.assertions(1);
+    const originalWebAssembly = globalThis.WebAssembly;
+    jest.spyOn(CpuInfo, 'getNumLogicalCores').mockReturnValue(8);
+    delete (globalThis as { WebAssembly?: typeof WebAssembly }).WebAssembly;
+
+    expect(WebCapabilities.isCapableOfVirtualBackground()).toBe(CapabilityState.NOT_CAPABLE);
+
+    (globalThis as { WebAssembly?: typeof WebAssembly }).WebAssembly = originalWebAssembly;
+  });
+
   describe('supportsEncodedStreamTransforms', () => {
     afterEach(() => {
       // Clean up window modifications
@@ -246,6 +268,27 @@ describe('WebCapabilities', () => {
       setupWindow(false);
 
       expect(WebCapabilities.supportsRTCPeerConnection()).toBe(CapabilityState.NOT_CAPABLE);
+    });
+  });
+
+  describe('supportsWasm', () => {
+    const originalWebAssembly = globalThis.WebAssembly;
+
+    afterEach(() => {
+      // Restore the WebAssembly global mutated by individual cases.
+      (globalThis as { WebAssembly?: typeof WebAssembly }).WebAssembly = originalWebAssembly;
+    });
+
+    it('should return CAPABLE when the WebAssembly runtime is available', () => {
+      expect.assertions(1);
+      expect(WebCapabilities.supportsWasm()).toBe(CapabilityState.CAPABLE);
+    });
+
+    it('should return NOT_CAPABLE when the WebAssembly runtime is hard-disabled', () => {
+      expect.assertions(1);
+      delete (globalThis as { WebAssembly?: typeof WebAssembly }).WebAssembly;
+
+      expect(WebCapabilities.supportsWasm()).toBe(CapabilityState.NOT_CAPABLE);
     });
   });
 
