@@ -1,3 +1,10 @@
+# [1.11.0](https://github.com/webex/web-capabilities/compare/v1.10.0...v1.11.0) (2026-07-14)
+
+
+### Features
+
+* add hasWasmSupport WebAssembly capability check ([#19](https://github.com/webex/web-capabilities/issues/19)) ([dee091d](https://github.com/webex/web-capabilities/commit/dee091d20ce725075a0f2389eb8e9f82930de566))
+
 # [1.10.0](https://github.com/webex/web-capabilities/compare/v1.9.0...v1.10.0) (2026-02-06)
 
 
