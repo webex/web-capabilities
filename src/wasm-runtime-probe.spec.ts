@@ -1,4 +1,4 @@
-import { WasmRuntimeProbe, WasmJitStatus } from './wasm-runtime-probe';
+import { WasmRuntimeProbe, WasmRuntimeStatus } from './wasm-runtime-probe';
 import { CapabilityState } from './web-capabilities';
 
 interface FakeReply {
@@ -63,7 +63,7 @@ describe('WasmRuntimeProbe', () => {
 
     const result = await WasmRuntimeProbe.check();
 
-    expect(result.status).toBe(WasmJitStatus.DISABLED);
+    expect(result.status).toBe(WasmRuntimeStatus.DISABLED);
     expect(result.capability).toBe(CapabilityState.NOT_CAPABLE);
     expect(result.ratio).toBeNull();
     expect(result.wasmMs).toBeNull();
@@ -75,7 +75,7 @@ describe('WasmRuntimeProbe', () => {
 
     const result = await WasmRuntimeProbe.check();
 
-    expect(result.status).toBe(WasmJitStatus.UNKNOWN);
+    expect(result.status).toBe(WasmRuntimeStatus.UNKNOWN);
     expect(result.capability).toBe(CapabilityState.UNKNOWN);
   });
 
@@ -110,7 +110,7 @@ describe('WasmRuntimeProbe', () => {
 
       const result = await WasmRuntimeProbe.check();
 
-      expect(result.status).toBe(WasmJitStatus.SLOW);
+      expect(result.status).toBe(WasmRuntimeStatus.SLOW);
       expect(result.capability).toBe(CapabilityState.NOT_CAPABLE);
       expect(result.ratio).toBe(0.25);
       expect(result.wasmMs).toBe(25);
@@ -123,7 +123,7 @@ describe('WasmRuntimeProbe', () => {
 
       const result = await WasmRuntimeProbe.check();
 
-      expect(result.status).toBe(WasmJitStatus.OK);
+      expect(result.status).toBe(WasmRuntimeStatus.OK);
       expect(result.capability).toBe(CapabilityState.CAPABLE);
       expect(result.ratio).toBe(1.1);
       expect(result.wasmMs).toBe(110);
@@ -136,7 +136,7 @@ describe('WasmRuntimeProbe', () => {
 
       const result = await WasmRuntimeProbe.check();
 
-      expect(result.status).toBe(WasmJitStatus.UNKNOWN);
+      expect(result.status).toBe(WasmRuntimeStatus.UNKNOWN);
     });
 
     it('should return UNKNOWN when jsMs is not a positive number', async () => {
@@ -145,7 +145,7 @@ describe('WasmRuntimeProbe', () => {
 
       const result = await WasmRuntimeProbe.check();
 
-      expect(result.status).toBe(WasmJitStatus.UNKNOWN);
+      expect(result.status).toBe(WasmRuntimeStatus.UNKNOWN);
     });
 
     it('should return UNKNOWN when the worker does not reply before the timeout', async () => {
@@ -157,7 +157,7 @@ describe('WasmRuntimeProbe', () => {
       jest.advanceTimersByTime(3000);
       const result = await promise;
 
-      expect(result.status).toBe(WasmJitStatus.UNKNOWN);
+      expect(result.status).toBe(WasmRuntimeStatus.UNKNOWN);
       jest.useRealTimers();
     });
 

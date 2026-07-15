@@ -2,7 +2,7 @@ import { CapabilityState, WebCapabilities } from './web-capabilities';
 import WORKER_SRC from './wasm-runtime-probe.worker';
 
 /** Possible results of the WASM runtime probe. */
-export enum WasmJitStatus {
+export enum WasmRuntimeStatus {
   OK = 'ok',
   SLOW = 'slow',
   DISABLED = 'disabled',
@@ -15,7 +15,7 @@ export enum WasmJitStatus {
  * slow interpreter.
  */
 export interface WasmRuntimeResult {
-  status: WasmJitStatus;
+  status: WasmRuntimeStatus;
   capability: CapabilityState;
   ratio: number | null; // wasmMs / jsMs, kept raw so the cutoff can be tuned later
   wasmMs: number | null;
@@ -29,15 +29,15 @@ const WORKER_TIMEOUT_MS = 3000;
 /**
  * Maps a probe status to a CAPABLE/NOT_CAPABLE verdict.
  *
- * @param status - The probe {@link WasmJitStatus}.
+ * @param status - The probe {@link WasmRuntimeStatus}.
  * @returns The corresponding {@link CapabilityState}.
  */
-const statusToCapability = (status: WasmJitStatus): CapabilityState => {
+const statusToCapability = (status: WasmRuntimeStatus): CapabilityState => {
   switch (status) {
-    case WasmJitStatus.OK:
+    case WasmRuntimeStatus.OK:
       return CapabilityState.CAPABLE;
-    case WasmJitStatus.SLOW:
-    case WasmJitStatus.DISABLED:
+    case WasmRuntimeStatus.SLOW:
+    case WasmRuntimeStatus.DISABLED:
       return CapabilityState.NOT_CAPABLE;
     default:
       return CapabilityState.UNKNOWN;
@@ -75,7 +75,7 @@ export class WasmRuntimeProbe {
   /**
    * Builds a {@link WasmRuntimeResult} from a status and optional raw measurements.
    *
-   * @param status - The classified {@link WasmJitStatus}.
+   * @param status - The classified {@link WasmRuntimeStatus}.
    * @param extra - Optional raw measurements to include.
    * @param extra.ratio - The wasmMs / jsMs ratio.
    * @param extra.wasmMs - The measured WASM time in milliseconds.
@@ -83,7 +83,7 @@ export class WasmRuntimeProbe {
    * @returns The assembled {@link WasmRuntimeResult}.
    */
   private static buildResult(
-    status: WasmJitStatus,
+    status: WasmRuntimeStatus,
     extra?: { ratio?: number; wasmMs?: number; jsMs?: number }
   ): WasmRuntimeResult {
     return {
@@ -102,7 +102,7 @@ export class WasmRuntimeProbe {
    */
   private static async run(): Promise<WasmRuntimeResult> {
     if (WebCapabilities.supportsWasm() === CapabilityState.NOT_CAPABLE) {
-      return this.buildResult(WasmJitStatus.DISABLED);
+      return this.buildResult(WasmRuntimeStatus.DISABLED);
     }
 
     // Can't run the benchmark without a Web Worker and a Blob URL.
@@ -111,12 +111,12 @@ export class WasmRuntimeProbe {
       typeof URL === 'undefined' ||
       !URL.createObjectURL
     ) {
-      return this.buildResult(WasmJitStatus.UNKNOWN);
+      return this.buildResult(WasmRuntimeStatus.UNKNOWN);
     }
 
     const started = this.startWorker();
     if (!started) {
-      return this.buildResult(WasmJitStatus.UNKNOWN);
+      return this.buildResult(WasmRuntimeStatus.UNKNOWN);
     }
 
     const { worker, url } = started;
@@ -143,11 +143,11 @@ export class WasmRuntimeProbe {
         msg.jsMs <= 0 ||
         typeof msg.wasmMs !== 'number'
       ) {
-        return this.buildResult(WasmJitStatus.UNKNOWN);
+        return this.buildResult(WasmRuntimeStatus.UNKNOWN);
       }
 
       const ratio = Number((msg.wasmMs / msg.jsMs).toFixed(2));
-      const status = ratio < SLOW_RATIO_THRESHOLD ? WasmJitStatus.SLOW : WasmJitStatus.OK;
+      const status = ratio < SLOW_RATIO_THRESHOLD ? WasmRuntimeStatus.SLOW : WasmRuntimeStatus.OK;
       return this.buildResult(status, {
         ratio,
         wasmMs: Number(msg.wasmMs.toFixed(2)),
