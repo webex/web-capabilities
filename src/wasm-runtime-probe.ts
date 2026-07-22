@@ -63,6 +63,11 @@ export class WasmRuntimeProbe {
   /**
    * Runs the probe (cached per page) and resolves with the classified result.
    *
+   * Times the same loop in WASM and JS off the main thread and compares them as a
+   * ratio (wasmMs / jsMs), which normalizes for the user's CPU. When the engine
+   * isn't running at full JIT speed the ratio drops below a calibrated threshold,
+   * and the probe reports {@link WasmRuntimeStatus.SLOW}.
+   *
    * @returns A promise that resolves with the {@link WasmRuntimeResult}.
    */
   static check(): Promise<WasmRuntimeResult> {
