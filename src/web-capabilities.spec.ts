@@ -292,6 +292,34 @@ describe('WebCapabilities', () => {
     });
   });
 
+  describe('supportsWorker', () => {
+    const originalWorker = (globalThis as { Worker?: unknown }).Worker;
+
+    /**
+     * Minimal stand-in for the Worker constructor, which jsdom does not provide.
+     */
+    class MockWorker {}
+
+    afterEach(() => {
+      // Restore the Worker global mutated by individual cases.
+      (globalThis as { Worker?: unknown }).Worker = originalWorker;
+    });
+
+    it('should return CAPABLE when Web Workers are available', () => {
+      expect.assertions(1);
+      (globalThis as { Worker?: unknown }).Worker = MockWorker;
+
+      expect(WebCapabilities.supportsWorker()).toBe(CapabilityState.CAPABLE);
+    });
+
+    it('should return NOT_CAPABLE when Web Workers are not available', () => {
+      expect.assertions(1);
+      delete (globalThis as { Worker?: unknown }).Worker;
+
+      expect(WebCapabilities.supportsWorker()).toBe(CapabilityState.NOT_CAPABLE);
+    });
+  });
+
   describe('supportsEncodingCodec', () => {
     let isChromeSpy: jest.SpyInstance;
     let isEdgeSpy: jest.SpyInstance;

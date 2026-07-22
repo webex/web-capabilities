@@ -135,6 +135,16 @@ export class WebCapabilities {
   }
 
   /**
+   * Checks whether the browser supports Web Workers, which run scripts on a
+   * background thread separate from the main UI thread.
+   *
+   * @returns A {@link CapabilityState}.
+   */
+  static supportsWorker(): CapabilityState {
+    return typeof Worker === 'function' ? CapabilityState.CAPABLE : CapabilityState.NOT_CAPABLE;
+  }
+
+  /**
    * Checks whether the browser supports RTCPeerConnection. This is needed,
    * because some users install browser extensions that remove RTCPeerConnection.
    *
