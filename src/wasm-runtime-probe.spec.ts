@@ -3,9 +3,37 @@ import { CapabilityState } from './web-capabilities';
 
 interface FakeReply {
   ok: boolean;
-  wasmMs?: number;
-  jsMs?: number;
+  ops?: number;
+  addMedianMs?: number;
+  divMedianMs?: number;
+  sqrtMedianMs?: number;
+  addMinMs?: number;
+  divMinMs?: number;
+  sqrtMinMs?: number;
+  checkAdd?: number;
+  checkDiv?: number;
+  checkSqrt?: number;
 }
+
+const OPS = 16_000_000;
+
+// Realistic measured signatures (see wasm-runtime-probe calibration matrix).
+// JIT ON (Mac Chrome): add 6.5ms, div 35.6, sqrt 80.6 -> divRatio 5.5, addNs 0.41.
+const FAST_REPLY: FakeReply = {
+  ok: true,
+  ops: OPS,
+  addMedianMs: 6.5,
+  divMedianMs: 35.6,
+  sqrtMedianMs: 80.6,
+};
+// JIT OFF (Edge, JIT disabled): add 32.1, div 60.6, sqrt 111.5 -> divRatio 1.9, addNs 2.0.
+const SLOW_REPLY: FakeReply = {
+  ok: true,
+  ops: OPS,
+  addMedianMs: 32.1,
+  divMedianMs: 60.6,
+  sqrtMedianMs: 111.5,
+};
 
 // Shared state that controls how the mock Worker behaves in the current test.
 let workerReply: FakeReply | undefined;
@@ -65,9 +93,9 @@ describe('WasmRuntimeProbe', () => {
 
     expect(result.status).toBe(WasmRuntimeStatus.DISABLED);
     expect(result.capability).toBe(CapabilityState.NOT_CAPABLE);
-    expect(result.ratio).toBeNull();
-    expect(result.wasmMs).toBeNull();
-    expect(result.jsMs).toBeNull();
+    expect(result.divRatio).toBeNull();
+    expect(result.addNsPerOp).toBeNull();
+    expect(result.divMedianMs).toBeNull();
   });
 
   it('should return UNKNOWN when Web Workers are not available', async () => {
@@ -104,30 +132,59 @@ describe('WasmRuntimeProbe', () => {
       delete (URL as { revokeObjectURL?: unknown }).revokeObjectURL;
     });
 
-    it('should return SLOW when the wasm/js ratio is below the threshold', async () => {
-      expect.assertions(5);
-      workerReply = { ok: true, wasmMs: 25, jsMs: 100 };
-
-      const result = await WasmRuntimeProbe.check();
-
-      expect(result.status).toBe(WasmRuntimeStatus.SLOW);
-      expect(result.capability).toBe(CapabilityState.NOT_CAPABLE);
-      expect(result.ratio).toBe(0.25);
-      expect(result.wasmMs).toBe(25);
-      expect(result.jsMs).toBe(100);
-    });
-
-    it('should return OK when the wasm/js ratio is at or above the threshold', async () => {
-      expect.assertions(5);
-      workerReply = { ok: true, wasmMs: 110, jsMs: 100 };
+    it('should return OK when the op-cost ratios show native (JIT) speed', async () => {
+      expect.assertions(4);
+      workerReply = FAST_REPLY;
 
       const result = await WasmRuntimeProbe.check();
 
       expect(result.status).toBe(WasmRuntimeStatus.OK);
       expect(result.capability).toBe(CapabilityState.CAPABLE);
-      expect(result.ratio).toBe(1.1);
-      expect(result.wasmMs).toBe(110);
-      expect(result.jsMs).toBe(100);
+      expect(result.divRatio).toBeCloseTo(5.48, 1);
+      expect(result.addNsPerOp).toBeCloseTo(0.406, 2);
+    });
+
+    it('should return SLOW when the div/add ratio collapses (interpreter)', async () => {
+      expect.assertions(4);
+      workerReply = SLOW_REPLY;
+
+      const result = await WasmRuntimeProbe.check();
+
+      expect(result.status).toBe(WasmRuntimeStatus.SLOW);
+      expect(result.capability).toBe(CapabilityState.NOT_CAPABLE);
+      expect(result.divRatio).toBeCloseTo(1.888, 1);
+      expect(result.addNsPerOp).toBeGreaterThan(1.2);
+    });
+
+    it('should return UNCERTAIN when a fast ratio contradicts an interpreter-slow add', async () => {
+      expect.assertions(2);
+      // divRatio 5 (looks native) but addNs 2.5 (interpreter-slow) -> contradiction.
+      workerReply = { ok: true, ops: OPS, addMedianMs: 40, divMedianMs: 200, sqrtMedianMs: 480 };
+
+      const result = await WasmRuntimeProbe.check();
+
+      expect(result.status).toBe(WasmRuntimeStatus.UNCERTAIN);
+      expect(result.capability).toBe(CapabilityState.UNKNOWN);
+    });
+
+    it('should return UNCERTAIN when the ratios fall between the fast and slow bars', async () => {
+      expect.assertions(1);
+      // divRatio 3.5 (between 3 and 4), sqrtRatio 7 (< 8), addNs 0.625 (< floor).
+      workerReply = { ok: true, ops: OPS, addMedianMs: 10, divMedianMs: 35, sqrtMedianMs: 70 };
+
+      const result = await WasmRuntimeProbe.check();
+
+      expect(result.status).toBe(WasmRuntimeStatus.UNCERTAIN);
+    });
+
+    it('should return UNKNOWN when the div kernel is too small to have really run', async () => {
+      expect.assertions(1);
+      // div median below the MIN_DIV_MEDIAN_MS floor -> nothing measurable executed.
+      workerReply = { ok: true, ops: OPS, addMedianMs: 1, divMedianMs: 2, sqrtMedianMs: 5 };
+
+      const result = await WasmRuntimeProbe.check();
+
+      expect(result.status).toBe(WasmRuntimeStatus.UNKNOWN);
     });
 
     it('should return UNKNOWN when the worker reports a failure', async () => {
@@ -139,9 +196,18 @@ describe('WasmRuntimeProbe', () => {
       expect(result.status).toBe(WasmRuntimeStatus.UNKNOWN);
     });
 
-    it('should return UNKNOWN when jsMs is not a positive number', async () => {
+    it('should return UNKNOWN when a measurement field is missing', async () => {
       expect.assertions(1);
-      workerReply = { ok: true, wasmMs: 10, jsMs: 0 };
+      workerReply = { ok: true, ops: OPS, addMedianMs: 6.5 }; // no div/sqrt
+
+      const result = await WasmRuntimeProbe.check();
+
+      expect(result.status).toBe(WasmRuntimeStatus.UNKNOWN);
+    });
+
+    it('should return UNKNOWN when addMedianMs is not positive', async () => {
+      expect.assertions(1);
+      workerReply = { ok: true, ops: OPS, addMedianMs: 0, divMedianMs: 60, sqrtMedianMs: 110 };
 
       const result = await WasmRuntimeProbe.check();
 
@@ -154,7 +220,7 @@ describe('WasmRuntimeProbe', () => {
       workerReply = undefined; // never replies
 
       const promise = WasmRuntimeProbe.check();
-      jest.advanceTimersByTime(3000);
+      jest.advanceTimersByTime(8000);
       const result = await promise;
 
       expect(result.status).toBe(WasmRuntimeStatus.UNKNOWN);
@@ -163,7 +229,7 @@ describe('WasmRuntimeProbe', () => {
 
     it('should cache the result so repeated calls run the benchmark only once', async () => {
       expect.assertions(2);
-      workerReply = { ok: true, wasmMs: 110, jsMs: 100 };
+      workerReply = FAST_REPLY;
 
       const first = WasmRuntimeProbe.check();
       const second = WasmRuntimeProbe.check();
