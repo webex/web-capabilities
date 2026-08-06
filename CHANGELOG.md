@@ -1,3 +1,10 @@
+# [1.12.0](https://github.com/webex/web-capabilities/compare/v1.11.0...v1.12.0) (2026-07-22)
+
+
+### Features
+
+* add WASM runtime probe to detect slow WebAssembly ([#20](https://github.com/webex/web-capabilities/issues/20)) ([97a3d01](https://github.com/webex/web-capabilities/commit/97a3d010e71a1104d3fcb381eb6dbe67e9ddc155))
+
 # [1.11.0](https://github.com/webex/web-capabilities/compare/v1.10.0...v1.11.0) (2026-07-14)
 
 
