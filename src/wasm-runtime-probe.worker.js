@@ -22,13 +22,16 @@
  * Two different execution units (integer divider vs FP sqrt) mean a single
  * hardware quirk (e.g. a very fast divider) can't fool both signals.
  *
- * This worker only MEASURES. It returns raw medians/mins so the main thread can
+ * The direction reads backwards on purpose: a HIGH ratio is healthy, a LOW one
+ * (~2) is the interpreter. Don't invert it — see EDGE-BNR-CASE-CONTEXT.md
+ * §3.3/§4.1 for the measurements behind this.
+ *
+ * This worker only MEASURES. It returns raw medians so the main thread can
  * classify and re-threshold per feature. Changing the kernels or op counts
  * invalidates the calibrated thresholds in wasm-runtime-probe.ts.
  *
  * Protocol: main thread posts 'start'; replies
- *   { ok: true, ops, addMedianMs, divMedianMs, sqrtMedianMs,
- *     addMinMs, divMinMs, sqrtMinMs, checkAdd, checkDiv, checkSqrt }
+ *   { ok: true, ops, addMedianMs, divMedianMs, sqrtMedianMs }
  * or { ok: false }.
  */
 self.onmessage = function onProbeStart() {
@@ -122,11 +125,12 @@ self.onmessage = function onProbeStart() {
     );
     var exports = new WebAssembly.Instance(new WebAssembly.Module(bytes)).exports;
 
-    var stats = function stats(samples) {
+    // Median, not mean: one scheduler hiccup in a trial must not move the result.
+    var median = function median(samples) {
       var sorted = samples.slice().sort(function ascending(a, b) {
         return a - b;
       });
-      return { median: sorted[Math.floor(sorted.length / 2)], min: sorted[0] };
+      return sorted[Math.floor(sorted.length / 2)];
     };
 
     // Warm up / tier up all three so the JIT (if on) has compiled before timing.
@@ -154,23 +158,12 @@ self.onmessage = function onProbeStart() {
       sqrtMs.push(performance.now() - s0);
     }
 
-    var addStat = stats(addMs);
-    var divStat = stats(divMs);
-    var sqrtStat = stats(sqrtMs);
-
     self.postMessage({
       ok: true,
       ops: OPS,
-      addMedianMs: addStat.median,
-      divMedianMs: divStat.median,
-      sqrtMedianMs: sqrtStat.median,
-      addMinMs: addStat.min,
-      divMinMs: divStat.min,
-      sqrtMinMs: sqrtStat.min,
-      // Cheap correctness canaries (the kernels actually ran and returned a value).
-      checkAdd: exports.add(3),
-      checkDiv: exports.div(3),
-      checkSqrt: exports.sqrt(3),
+      addMedianMs: median(addMs),
+      divMedianMs: median(divMs),
+      sqrtMedianMs: median(sqrtMs),
     });
   } catch (err) {
     self.postMessage({ ok: false });

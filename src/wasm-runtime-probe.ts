@@ -88,12 +88,6 @@ interface WorkerReply {
   addMedianMs?: number;
   divMedianMs?: number;
   sqrtMedianMs?: number;
-  addMinMs?: number;
-  divMinMs?: number;
-  sqrtMinMs?: number;
-  checkAdd?: number;
-  checkDiv?: number;
-  checkSqrt?: number;
 }
 
 /**
