@@ -1,4 +1,9 @@
-import { WasmRuntimeProbe, WasmRuntimeStatus } from './wasm-runtime-probe';
+import {
+  WasmRuntimeProbe,
+  WasmRuntimeStatus,
+  WasmRuntimeUncertainReason,
+  WasmRuntimeUnknownReason,
+} from './wasm-runtime-probe';
 import { CapabilityState } from './web-capabilities';
 
 interface FakeReply {
@@ -11,8 +16,7 @@ interface FakeReply {
 
 const OPS = 16_000_000;
 
-// Lab-shaped worker replies (calibration matrix).
-// JIT on (Mac Chrome): add 6.5, div 35.6, sqrt 80.6.
+// Calibration fixtures for classify() (fast JIT-shaped vs slow interpreter-shaped medians).
 const FAST_REPLY: FakeReply = {
   ok: true,
   ops: OPS,
@@ -20,7 +24,7 @@ const FAST_REPLY: FakeReply = {
   divMedianMs: 35.6,
   sqrtMedianMs: 80.6,
 };
-// JIT off (Edge): add 32.1, div 60.6, sqrt 111.5.
+// Slow interpreter-shaped medians for the same op count.
 const SLOW_REPLY: FakeReply = {
   ok: true,
   ops: OPS,
@@ -69,25 +73,29 @@ describe('WasmRuntimeProbe', () => {
   });
 
   it('should return DISABLED when WebAssembly is hard-disabled', async () => {
-    expect.assertions(5);
+    expect.assertions(8);
     delete (globalThis as { WebAssembly?: typeof WebAssembly }).WebAssembly;
 
     const result = await WasmRuntimeProbe.check();
 
     expect(result.status).toBe(WasmRuntimeStatus.DISABLED);
     expect(result.capability).toBe(CapabilityState.NOT_CAPABLE);
+    expect(result.unknownReason).toBeNull();
+    expect(result.uncertainReason).toBeNull();
+    expect(result.uncertainDetail).toBeNull();
     expect(result.divRatio).toBeNull();
     expect(result.addNsPerOp).toBeNull();
     expect(result.divMedianMs).toBeNull();
   });
 
   it('should return UNKNOWN when Web Workers are not available', async () => {
-    expect.assertions(2);
+    expect.assertions(3);
 
     const result = await WasmRuntimeProbe.check();
 
     expect(result.status).toBe(WasmRuntimeStatus.UNKNOWN);
     expect(result.capability).toBe(CapabilityState.UNKNOWN);
+    expect(result.unknownReason).toBe(WasmRuntimeUnknownReason.WORKER_UNAVAILABLE);
   });
 
   describe('worker benchmark', () => {
@@ -116,19 +124,21 @@ describe('WasmRuntimeProbe', () => {
     });
 
     it('should return OK when the op-cost ratios show native (JIT) speed', async () => {
-      expect.assertions(4);
+      expect.assertions(6);
       workerReply = FAST_REPLY;
 
       const result = await WasmRuntimeProbe.check();
 
       expect(result.status).toBe(WasmRuntimeStatus.OK);
       expect(result.capability).toBe(CapabilityState.CAPABLE);
+      expect(result.unknownReason).toBeNull();
+      expect(result.uncertainReason).toBeNull();
       expect(result.divRatio).toBeCloseTo(5.48, 1);
       expect(result.addNsPerOp).toBeCloseTo(0.406, 2);
     });
 
     it('should return SLOW when the div/add ratio collapses (interpreter)', async () => {
-      expect.assertions(4);
+      expect.assertions(5);
       workerReply = SLOW_REPLY;
 
       const result = await WasmRuntimeProbe.check();
@@ -137,68 +147,79 @@ describe('WasmRuntimeProbe', () => {
       expect(result.capability).toBe(CapabilityState.NOT_CAPABLE);
       expect(result.divRatio).toBeCloseTo(1.888, 1);
       expect(result.addNsPerOp).toBeGreaterThan(1.2);
+      expect(result.uncertainReason).toBeNull();
     });
 
     it('should return UNCERTAIN when a fast ratio contradicts an interpreter-slow add', async () => {
-      expect.assertions(2);
-      // divRatio 5 (looks native) but addNs 2.5 (interpreter-slow) -> contradiction.
+      expect.assertions(5);
+      // Fast div ratio but interpreter-slow addNs. Expect UNCERTAIN.
       workerReply = { ok: true, ops: OPS, addMedianMs: 40, divMedianMs: 200, sqrtMedianMs: 480 };
 
       const result = await WasmRuntimeProbe.check();
 
       expect(result.status).toBe(WasmRuntimeStatus.UNCERTAIN);
       expect(result.capability).toBe(CapabilityState.UNKNOWN);
+      expect(result.uncertainReason).toBe(WasmRuntimeUncertainReason.CONFLICTING_SIGNALS);
+      expect(result.uncertainDetail).toContain(
+        'Different parts of the measurement do not point to the same outcome.'
+      );
+      expect(result.uncertainDetail).toMatch(/divRatio=5, sqrtRatio=12, addNsPerOp=2\.5/);
     });
 
     it('should return UNCERTAIN when the ratios fall between the fast and slow bars', async () => {
-      expect.assertions(1);
-      // divRatio 3.5 (between 3 and 4), sqrtRatio 7 (< 8), addNs 0.625 (< floor).
+      expect.assertions(3);
+      // Ratios between fast and slow thresholds.
       workerReply = { ok: true, ops: OPS, addMedianMs: 10, divMedianMs: 35, sqrtMedianMs: 70 };
 
       const result = await WasmRuntimeProbe.check();
 
       expect(result.status).toBe(WasmRuntimeStatus.UNCERTAIN);
+      expect(result.uncertainReason).toBe(WasmRuntimeUncertainReason.RATIOS_INCONCLUSIVE);
+      expect(result.uncertainDetail).toContain('addMedianMs=10ms');
     });
 
     it('should return UNKNOWN when the div kernel is too small to have really run', async () => {
-      expect.assertions(1);
-      // div median below the MIN_DIV_MEDIAN_MS floor -> nothing measurable executed.
+      expect.assertions(2);
       workerReply = { ok: true, ops: OPS, addMedianMs: 1, divMedianMs: 2, sqrtMedianMs: 5 };
 
       const result = await WasmRuntimeProbe.check();
 
       expect(result.status).toBe(WasmRuntimeStatus.UNKNOWN);
+      expect(result.unknownReason).toBe(WasmRuntimeUnknownReason.TIMING_SAMPLE_TOO_SMALL);
     });
 
     it('should return UNKNOWN when the worker reports a failure', async () => {
-      expect.assertions(1);
+      expect.assertions(2);
       workerReply = { ok: false };
 
       const result = await WasmRuntimeProbe.check();
 
       expect(result.status).toBe(WasmRuntimeStatus.UNKNOWN);
+      expect(result.unknownReason).toBe(WasmRuntimeUnknownReason.WORKER_BENCHMARK_FAILED);
     });
 
     it('should return UNKNOWN when a measurement field is missing', async () => {
-      expect.assertions(1);
-      workerReply = { ok: true, ops: OPS, addMedianMs: 6.5 }; // missing div/sqrt
+      expect.assertions(2);
+      workerReply = { ok: true, ops: OPS, addMedianMs: 6.5 };
 
       const result = await WasmRuntimeProbe.check();
 
       expect(result.status).toBe(WasmRuntimeStatus.UNKNOWN);
+      expect(result.unknownReason).toBe(WasmRuntimeUnknownReason.INVALID_MEASUREMENT);
     });
 
     it('should return UNKNOWN when addMedianMs is not positive', async () => {
-      expect.assertions(1);
+      expect.assertions(2);
       workerReply = { ok: true, ops: OPS, addMedianMs: 0, divMedianMs: 60, sqrtMedianMs: 110 };
 
       const result = await WasmRuntimeProbe.check();
 
       expect(result.status).toBe(WasmRuntimeStatus.UNKNOWN);
+      expect(result.unknownReason).toBe(WasmRuntimeUnknownReason.INVALID_MEASUREMENT);
     });
 
     it('should return UNKNOWN when the worker does not reply before the timeout', async () => {
-      expect.assertions(1);
+      expect.assertions(2);
       jest.useFakeTimers();
       workerReply = undefined;
 
@@ -207,6 +228,7 @@ describe('WasmRuntimeProbe', () => {
       const result = await promise;
 
       expect(result.status).toBe(WasmRuntimeStatus.UNKNOWN);
+      expect(result.unknownReason).toBe(WasmRuntimeUnknownReason.WORKER_TIMEOUT);
       jest.useRealTimers();
     });
 

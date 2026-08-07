@@ -9,44 +9,122 @@ export enum WasmRuntimeStatus {
   SLOW = 'slow',
   /** WASM missing or will not compile. */
   DISABLED = 'disabled',
-  /** Measurements disagree; do not treat as a confident slow or fast. */
+  /** Different parts of the measurement do not point to the same thing. See {@link WasmRuntimeResult.uncertainReason}. */
   UNCERTAIN = 'uncertain',
-  /** Probe could not run (no Worker, timeout, background tab, bad sample). */
+  /** Probe could not produce a trustworthy measurement. See {@link WasmRuntimeResult.unknownReason}. */
   UNKNOWN = 'unknown',
 }
 
 /**
- * Probe result for real-time WASM effects (BNR, VBG). Includes raw metrics so
- * callers can change thresholds without re-running the benchmark.
+ * Why {@link WasmRuntimeStatus.UNKNOWN} was returned. Set only when status is unknown.
+ * Null for ok, slow, disabled, and uncertain.
+ */
+export enum WasmRuntimeUnknownReason {
+  /** No Web Worker or Blob URL support in this environment. */
+  WORKER_UNAVAILABLE = 'worker_unavailable',
+  /** Worker or Blob URL creation threw. */
+  WORKER_START_FAILED = 'worker_start_failed',
+  /** Benchmark did not finish before the configured worker timeout. */
+  WORKER_TIMEOUT = 'worker_timeout',
+  /** Worker onerror or ok false from the benchmark script. */
+  WORKER_BENCHMARK_FAILED = 'worker_benchmark_failed',
+  /** Reply missing fields or non-positive timings. */
+  INVALID_MEASUREMENT = 'invalid_measurement',
+  /** Page/tab was hidden so timers are not trustworthy. */
+  BACKGROUND_TAB = 'background_tab',
+  /** Div kernel median too small. The timed loop probably did not run. */
+  TIMING_SAMPLE_TOO_SMALL = 'timing_sample_too_small',
+}
+
+/**
+ * Why {@link WasmRuntimeStatus.UNCERTAIN} was returned. Set only when status is uncertain.
+ * Null for ok, slow, disabled, and unknown.
+ */
+export enum WasmRuntimeUncertainReason {
+  /** Op-cost ratios look fast but absolute add cost looks interpreter-slow. */
+  CONFLICTING_SIGNALS = 'conflicting_signals',
+  /** Ratios sit between the fast and slow calibration bars with no clear slow add cost. */
+  RATIOS_INCONCLUSIVE = 'ratios_inconclusive',
+}
+
+/** Log/telemetry prefix when {@link WasmRuntimeStatus.UNCERTAIN}. */
+const UNCERTAIN_DETAIL_PREFIX =
+  'Different parts of the measurement do not point to the same outcome.';
+
+/**
+ * Builds the uncertain detail string for logs and telemetry.
+ *
+ * @param metrics - Rounded classification metrics.
+ * @param metrics.divRatio - Divide median divided by add median.
+ * @param metrics.sqrtRatio - Sqrt median divided by add median.
+ * @param metrics.addNsPerOp - Nanoseconds per add op.
+ * @param metrics.addMedianMs - Median add kernel time in ms.
+ * @param metrics.divMedianMs - Median div kernel time in ms.
+ * @param metrics.sqrtMedianMs - Median sqrt kernel time in ms.
+ * @returns Detail string with {@link UNCERTAIN_DETAIL_PREFIX} and metric values.
+ */
+const formatUncertainDetail = (metrics: {
+  divRatio: number;
+  sqrtRatio: number;
+  addNsPerOp: number;
+  addMedianMs: number;
+  divMedianMs: number;
+  sqrtMedianMs: number;
+}): string =>
+  `${UNCERTAIN_DETAIL_PREFIX} divRatio=${metrics.divRatio}, sqrtRatio=${metrics.sqrtRatio}, addNsPerOp=${metrics.addNsPerOp}, addMedianMs=${metrics.addMedianMs}ms, divMedianMs=${metrics.divMedianMs}ms, sqrtMedianMs=${metrics.sqrtMedianMs}ms`;
+
+/**
+ * Result of the WASM runtime probe. Used to decide whether to allow real-time
+ * WASM effects (BNR, VBG), which run poorly when the browser runs WASM through a
+ * slow interpreter.
  */
 export interface WasmRuntimeResult {
   status: WasmRuntimeStatus;
   capability: CapabilityState;
-  /** Divide median divided by add median (main JIT vs interpreter signal). */
+  /**
+   * When status is {@link WasmRuntimeStatus.UNKNOWN}, which guard or measurement
+   * problem applied. Otherwise null.
+   */
+  unknownReason: WasmRuntimeUnknownReason | null;
+  /**
+   * When status is {@link WasmRuntimeStatus.UNCERTAIN}, which disagreement pattern
+   * applied. Otherwise null.
+   */
+  uncertainReason: WasmRuntimeUncertainReason | null;
+  /**
+   * When status is {@link WasmRuntimeStatus.UNCERTAIN}, generic explanation plus
+   * main metrics for logs and telemetry. Otherwise null.
+   */
+  uncertainDetail: string | null;
+  /** Divide time divided by add time. High means JIT. Low near 2 means interpreter. */
   divRatio: number | null;
-  /** Sqrt median divided by add median (second unit, helps some CPUs). */
+  /**
+   * Sqrt time divided by add time. Uses the FP sqrt unit, not the integer divider,
+   * so a chip with a fast divider still has a second signal.
+   */
   sqrtRatio: number | null;
-  /** Nanoseconds per add op; scales with clock, used as a slow hint only. */
+  /** Nanoseconds per add op. Scales with CPU clock. Slow hint only, not used alone for OK. */
   addNsPerOp: number | null;
   addMedianMs: number | null;
   divMedianMs: number | null;
   sqrtMedianMs: number | null;
 }
 
-// Lab calibration: Intel Mac + Windows, four engines, JIT on/off, throttled runs.
+// Classification thresholds. Calibration constants — retune when re-benchmarking.
 const DIV_FAST_RATIO = 4.0;
 const DIV_SLOW_RATIO = 3.0;
-// Sqrt/add runs higher than div/add on both JIT and interpreter; needs its own bar.
+// Sqrt/add bar is higher than div/add on both JIT and interpreter engines.
 const SQRT_FAST_RATIO = 8.0;
-// Interpreter adds are absolutely slower; never overrides a fast ratio alone.
+// Absolute add cost can flag interpreter speed. It never overrides a fast ratio alone.
 const INTERP_ADD_NS_FLOOR = 1.2;
-// Div is multi-cycle; below this median the timed loop likely did not really run.
+// Integer div is slow. A tiny div median means the benchmark barely ran.
 const MIN_DIV_MEDIAN_MS = 8;
-// ~16M ops x 5 trials; throttled interpreter needed ~3.4s in lab.
+// ~16M inner ops, 5 trials. Timeout sized for the slowest expected interpreter run.
 const WORKER_TIMEOUT_MS = 8000;
 
 /**
- * Maps probe status to capability. UNCERTAIN stays UNKNOWN so we do not false-block.
+ * Maps probe status to capability. Uncertain stays unknown capability so we do not
+ * false-block effects.
  *
  * @param status - The probe {@link WasmRuntimeStatus}.
  * @returns The corresponding {@link CapabilityState}.
@@ -71,18 +149,22 @@ interface WorkerReply {
   sqrtMedianMs?: number;
 }
 
+type WorkerBenchOutcome =
+  | { type: 'reply'; data: WorkerReply }
+  | { type: 'fail'; reason: WasmRuntimeUnknownReason };
+
 /**
- * Detects whether WASM runs at JIT speed or through a slow interpreter (for example
- * Edge with JIT disabled by policy). Uses a quick disabled check, then a Worker
- * benchmark. Result is cached for the page lifetime.
+ * Tells whether WASM is fast enough for real-time effects (for example BNR on Edge
+ * when JIT is off). Runs a quick WASM disabled check, then a Worker benchmark.
+ * Cached once per page load.
  */
 export class WasmRuntimeProbe {
   private static cachedResult?: Promise<WasmRuntimeResult>;
 
   /**
-   * Runs the probe once per page (cached). Compares WASM op-cost ratios from a Worker;
-   * under a slow interpreter both div/add and sqrt/add collapse near ~2 and status is
-   * {@link WasmRuntimeStatus.SLOW}.
+   * Runs the probe once per page (cached). The Worker times add, div, and sqrt in
+   * WASM and the main thread compares ratios. Slow interpreter engines collapse both
+   * ratios near 2 and status becomes {@link WasmRuntimeStatus.SLOW}.
    *
    * @returns A promise that resolves with the {@link WasmRuntimeResult}.
    */
@@ -94,7 +176,8 @@ export class WasmRuntimeProbe {
   }
 
   /**
-   * Assembles a {@link WasmRuntimeResult} from status and optional worker metrics.
+   * Builds a {@link WasmRuntimeResult} from status, optional metrics, and optional
+   * unknown reason.
    *
    * @param status - Classified status.
    * @param metrics - Optional raw timings from the worker.
@@ -104,6 +187,8 @@ export class WasmRuntimeProbe {
    * @param metrics.addMedianMs - Median add kernel time in ms.
    * @param metrics.divMedianMs - Median div kernel time in ms.
    * @param metrics.sqrtMedianMs - Median sqrt kernel time in ms.
+   * @param unknownReason - Set when status is {@link WasmRuntimeStatus.UNKNOWN}.
+   * @param uncertainReason - Set when status is {@link WasmRuntimeStatus.UNCERTAIN}.
    * @returns Assembled {@link WasmRuntimeResult}.
    */
   private static buildResult(
@@ -115,11 +200,42 @@ export class WasmRuntimeProbe {
       addMedianMs?: number;
       divMedianMs?: number;
       sqrtMedianMs?: number;
-    }
+    },
+    unknownReason?: WasmRuntimeUnknownReason,
+    uncertainReason?: WasmRuntimeUncertainReason
   ): WasmRuntimeResult {
+    const hasFullMetrics =
+      metrics?.divRatio !== undefined &&
+      metrics.sqrtRatio !== undefined &&
+      metrics.addNsPerOp !== undefined &&
+      metrics.addMedianMs !== undefined &&
+      metrics.divMedianMs !== undefined &&
+      metrics.sqrtMedianMs !== undefined;
+
+    const uncertainDetail =
+      status === WasmRuntimeStatus.UNCERTAIN && hasFullMetrics
+        ? formatUncertainDetail({
+            divRatio: metrics.divRatio as number,
+            sqrtRatio: metrics.sqrtRatio as number,
+            addNsPerOp: metrics.addNsPerOp as number,
+            addMedianMs: metrics.addMedianMs as number,
+            divMedianMs: metrics.divMedianMs as number,
+            sqrtMedianMs: metrics.sqrtMedianMs as number,
+          })
+        : null;
+
     return {
       status,
       capability: statusToCapability(status),
+      unknownReason:
+        status === WasmRuntimeStatus.UNKNOWN
+          ? unknownReason ?? WasmRuntimeUnknownReason.INVALID_MEASUREMENT
+          : null,
+      uncertainReason:
+        status === WasmRuntimeStatus.UNCERTAIN
+          ? uncertainReason ?? WasmRuntimeUncertainReason.RATIOS_INCONCLUSIVE
+          : null,
+      uncertainDetail,
       divRatio: metrics?.divRatio ?? null,
       sqrtRatio: metrics?.sqrtRatio ?? null,
       addNsPerOp: metrics?.addNsPerOp ?? null,
@@ -130,7 +246,7 @@ export class WasmRuntimeProbe {
   }
 
   /**
-   * Disabled check, then Worker benchmark with timeout and cleanup.
+   * WASM support check, then Worker benchmark with timeout and cleanup.
    *
    * @returns Classified probe result.
    */
@@ -144,33 +260,47 @@ export class WasmRuntimeProbe {
       typeof URL === 'undefined' ||
       !URL.createObjectURL
     ) {
-      return this.buildResult(WasmRuntimeStatus.UNKNOWN);
+      return this.buildResult(
+        WasmRuntimeStatus.UNKNOWN,
+        undefined,
+        WasmRuntimeUnknownReason.WORKER_UNAVAILABLE
+      );
     }
 
     const started = this.startWorker();
     if (!started) {
-      return this.buildResult(WasmRuntimeStatus.UNKNOWN);
+      return this.buildResult(
+        WasmRuntimeStatus.UNKNOWN,
+        undefined,
+        WasmRuntimeUnknownReason.WORKER_START_FAILED
+      );
     }
 
     const { worker, url } = started;
     try {
-      // eslint-disable-next-line jsdoc/require-jsdoc
-      const msg = await new Promise<WorkerReply>((resolve) => {
-        const timer = setTimeout(() => resolve({ ok: false }), WORKER_TIMEOUT_MS);
+      const outcome = await new Promise<WorkerBenchOutcome>((resolve) => {
+        const timer = setTimeout(
+          () => resolve({ type: 'fail', reason: WasmRuntimeUnknownReason.WORKER_TIMEOUT }),
+          WORKER_TIMEOUT_MS
+        );
         // eslint-disable-next-line jsdoc/require-jsdoc
         worker.onmessage = (e: MessageEvent<WorkerReply>) => {
           clearTimeout(timer);
-          resolve(e.data);
+          resolve({ type: 'reply', data: e.data });
         };
         // eslint-disable-next-line jsdoc/require-jsdoc
         worker.onerror = () => {
           clearTimeout(timer);
-          resolve({ ok: false });
+          resolve({ type: 'fail', reason: WasmRuntimeUnknownReason.WORKER_BENCHMARK_FAILED });
         };
         worker.postMessage('start');
       });
 
-      return this.classify(msg);
+      if (outcome.type === 'fail') {
+        return this.buildResult(WasmRuntimeStatus.UNKNOWN, undefined, outcome.reason);
+      }
+
+      return this.classify(outcome.data);
     } finally {
       worker.terminate();
       URL.revokeObjectURL(url);
@@ -178,15 +308,22 @@ export class WasmRuntimeProbe {
   }
 
   /**
-   * Classifies worker medians. Fast div or sqrt ratio wins unless absolute add cost
-   * contradicts it ({@link WasmRuntimeStatus.UNCERTAIN}).
+   * Turns worker medians into status and metrics. High div or sqrt ratio means fast
+   * WASM unless absolute add cost disagrees ({@link WasmRuntimeStatus.UNCERTAIN}).
    *
    * @param msg - Raw worker reply.
    * @returns Classified result with rounded metrics.
    */
   private static classify(msg: WorkerReply): WasmRuntimeResult {
+    if (!msg.ok) {
+      return this.buildResult(
+        WasmRuntimeStatus.UNKNOWN,
+        undefined,
+        WasmRuntimeUnknownReason.WORKER_BENCHMARK_FAILED
+      );
+    }
+
     if (
-      !msg.ok ||
       typeof msg.ops !== 'number' ||
       msg.ops <= 0 ||
       typeof msg.addMedianMs !== 'number' ||
@@ -194,7 +331,11 @@ export class WasmRuntimeProbe {
       typeof msg.divMedianMs !== 'number' ||
       typeof msg.sqrtMedianMs !== 'number'
     ) {
-      return this.buildResult(WasmRuntimeStatus.UNKNOWN);
+      return this.buildResult(
+        WasmRuntimeStatus.UNKNOWN,
+        undefined,
+        WasmRuntimeUnknownReason.INVALID_MEASUREMENT
+      );
     }
 
     const { addMedianMs, divMedianMs, sqrtMedianMs } = msg;
@@ -212,26 +353,41 @@ export class WasmRuntimeProbe {
     const hidden = typeof document !== 'undefined' && document.visibilityState === 'hidden';
 
     let status: WasmRuntimeStatus;
-    if (hidden || !workRan) {
+    let unknownReason: WasmRuntimeUnknownReason | undefined;
+    let uncertainReason: WasmRuntimeUncertainReason | undefined;
+    if (hidden) {
       status = WasmRuntimeStatus.UNKNOWN;
+      unknownReason = WasmRuntimeUnknownReason.BACKGROUND_TAB;
+    } else if (!workRan) {
+      status = WasmRuntimeStatus.UNKNOWN;
+      unknownReason = WasmRuntimeUnknownReason.TIMING_SAMPLE_TOO_SMALL;
     } else if (fastSignal && interpAbs) {
+      // Different parts of the measurement do not point to the same thing (ratios vs add cost).
       status = WasmRuntimeStatus.UNCERTAIN;
+      uncertainReason = WasmRuntimeUncertainReason.CONFLICTING_SIGNALS;
     } else if (fastSignal) {
       status = WasmRuntimeStatus.OK;
     } else if (slowSignalRatio || interpAbs) {
       status = WasmRuntimeStatus.SLOW;
     } else {
+      // Different parts of the measurement do not point to the same thing (ratios in gray zone).
       status = WasmRuntimeStatus.UNCERTAIN;
+      uncertainReason = WasmRuntimeUncertainReason.RATIOS_INCONCLUSIVE;
     }
 
-    return this.buildResult(status, {
-      divRatio: round3(divRatio),
-      sqrtRatio: round3(sqrtRatio),
-      addNsPerOp: round3(addNsPerOp),
-      addMedianMs: round3(addMedianMs),
-      divMedianMs: round3(divMedianMs),
-      sqrtMedianMs: round3(sqrtMedianMs),
-    });
+    return this.buildResult(
+      status,
+      {
+        divRatio: round3(divRatio),
+        sqrtRatio: round3(sqrtRatio),
+        addNsPerOp: round3(addNsPerOp),
+        addMedianMs: round3(addMedianMs),
+        divMedianMs: round3(divMedianMs),
+        sqrtMedianMs: round3(sqrtMedianMs),
+      },
+      unknownReason,
+      uncertainReason
+    );
   }
 
   /**

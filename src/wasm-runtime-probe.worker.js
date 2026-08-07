@@ -1,13 +1,13 @@
 /*
  * WASM runtime benchmark worker. Inlined into wasm-runtime-probe.ts via Blob URL.
  *
- * Times dependent-chain add / div / sqrt kernels; main thread uses div/add and
- * sqrt/add ratios so CPU clock mostly cancels out.
+ * Times dependent-chain add, div, and sqrt kernels. The main thread compares
+ * div/add and sqrt/add ratios so CPU clock speed mostly cancels out.
  *
- * Counterintuitive: HIGH ratio means JIT OK, LOW (~2) means interpreted WASM.
- * Thresholds are in wasm-runtime-probe.ts — do not invert ratios when classifying.
+ * Counterintuitive: HIGH ratio means JIT OK. LOW near 2 means interpreted WASM.
+ * Thresholds live in wasm-runtime-probe.ts. Do not invert ratios when classifying.
  *
- * postMessage('start') -> { ok, ops, addMedianMs, divMedianMs, sqrtMedianMs } or { ok: false }.
+ * postMessage('start') returns medians or { ok: false }.
  */
 self.onmessage = function onProbeStart() {
   try {
