@@ -26,7 +26,7 @@ export enum WasmRuntimeUnknownReason {
   /** Page was hidden during the benchmark, which can distort its timing. */
   BACKGROUND_TAB = 'background_tab',
   /** Divide benchmark finished too quickly to classify the runtime. */
-  TIMING_SAMPLE_TOO_SMALL = 'timing_sample_too_small',
+  DIV_TIMING_TOO_SHORT = 'div_timing_too_short',
 }
 
 /** Reasons a probe returns {@link WasmRuntimeStatus.UNCERTAIN}. */
@@ -78,8 +78,8 @@ const DIV_FAST_RATIO = 4.0;
 const DIV_SLOW_RATIO = 3.0;
 /** Square root ratio at or above this value provides another fast WASM signal. */
 const SQRT_FAST_RATIO = 8.0;
-/** Add cost above this value indicates slow WASM unless a fast ratio disagrees. */
-const INTERP_ADD_NS_FLOOR = 1.2;
+/** Add time per operation above this value indicates slow WASM unless a fast ratio disagrees. */
+const SLOW_ADD_NS_PER_OP_THRESHOLD = 1.2;
 /** Divide samples below this duration are too short to classify. */
 const MIN_DIV_MEDIAN_MS = 8;
 /** Maximum time allowed for the worker benchmark to finish. */
@@ -270,12 +270,13 @@ export class WasmRuntimeProbe {
 
     const divRatio = divMedianMs / addMedianMs;
     const sqrtRatio = sqrtMedianMs / addMedianMs;
-    const addNsPerOp = (addMedianMs * 1e6) / response.ops;
+    const addNsPerOp = (addMedianMs * 1_000_000) / response.ops;
 
+    // CPUs can handle divide and square root differently, so either fast ratio is enough.
     const hasFastRatio = divRatio >= DIV_FAST_RATIO || sqrtRatio >= SQRT_FAST_RATIO;
-    const hasSlowDivideRatio = divRatio <= DIV_SLOW_RATIO;
-    const hasSlowAddCost = addNsPerOp > INTERP_ADD_NS_FLOOR;
-    const hasSufficientDivideTiming = divMedianMs >= MIN_DIV_MEDIAN_MS;
+    const hasSlowDivRatio = divRatio <= DIV_SLOW_RATIO;
+    const isAddTimingSlow = addNsPerOp > SLOW_ADD_NS_PER_OP_THRESHOLD;
+    const hasSufficientDivTiming = divMedianMs >= MIN_DIV_MEDIAN_MS;
     const isPageHidden = typeof document !== 'undefined' && document.visibilityState === 'hidden';
 
     let status: WasmRuntimeStatus;
@@ -283,15 +284,15 @@ export class WasmRuntimeProbe {
     if (isPageHidden) {
       status = WasmRuntimeStatus.UNKNOWN;
       reason = WasmRuntimeUnknownReason.BACKGROUND_TAB;
-    } else if (!hasSufficientDivideTiming) {
+    } else if (!hasSufficientDivTiming) {
       status = WasmRuntimeStatus.UNKNOWN;
-      reason = WasmRuntimeUnknownReason.TIMING_SAMPLE_TOO_SMALL;
-    } else if (hasFastRatio && hasSlowAddCost) {
+      reason = WasmRuntimeUnknownReason.DIV_TIMING_TOO_SHORT;
+    } else if (hasFastRatio && isAddTimingSlow) {
       status = WasmRuntimeStatus.UNCERTAIN;
       reason = WasmRuntimeUncertainReason.FAST_RATIO_SLOW_ADD;
     } else if (hasFastRatio) {
       status = WasmRuntimeStatus.OK;
-    } else if (hasSlowDivideRatio || hasSlowAddCost) {
+    } else if (hasSlowDivRatio || isAddTimingSlow) {
       status = WasmRuntimeStatus.SLOW;
     } else {
       status = WasmRuntimeStatus.UNCERTAIN;
