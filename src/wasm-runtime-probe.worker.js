@@ -1,8 +1,9 @@
 /*
  * WASM runtime benchmark worker. Inlined into wasm-runtime-probe.ts via Blob URL.
  *
- * Times dependent-chain add, div, and sqrt kernels. The main thread compares
- * div/add and sqrt/add ratios so CPU clock speed mostly cancels out.
+ * Times add, divide, and square root WASM loops. Each operation uses the previous
+ * result so the browser cannot run several operations at once. The main thread
+ * compares divide/add and square root/add ratios so CPU speed mostly cancels out.
  *
  * Counterintuitive: HIGH ratio means JIT OK. LOW near 2 means interpreted WASM.
  * Thresholds live in wasm-runtime-probe.ts. Do not invert ratios when classifying.
@@ -90,7 +91,7 @@ self.onmessage = function onProbeStart() {
     );
     var exports = new WebAssembly.Instance(new WebAssembly.Module(bytes)).exports;
 
-    // Median dampens one bad scheduler slice in a trial.
+    // Median reduces the effect of one unusually slow trial.
     var median = function median(samples) {
       var sorted = samples.slice().sort(function ascending(a, b) {
         return a - b;
@@ -98,7 +99,7 @@ self.onmessage = function onProbeStart() {
       return sorted[Math.floor(sorted.length / 2)];
     };
 
-    // Tier-up before timing so JIT-on engines are measured compiled, not cold.
+    // Run each function before timing so the browser can compile it.
     exports.add(200000);
     exports.div(200000);
     exports.sqrt(200000);
@@ -106,7 +107,7 @@ self.onmessage = function onProbeStart() {
     exports.div(200000);
     exports.sqrt(200000);
 
-    // Round-robin trials so load spikes affect all three kernels equally.
+    // Alternate operations so temporary system load affects them similarly.
     var addMs = [];
     var divMs = [];
     var sqrtMs = [];

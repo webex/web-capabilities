@@ -17,17 +17,11 @@ export enum WasmRuntimeStatus {
 
 /** Reasons a probe returns {@link WasmRuntimeStatus.UNKNOWN}. */
 export enum WasmRuntimeUnknownReason {
-  /** No Web Worker or Blob URL support in this environment. */
   WORKER_UNAVAILABLE = 'worker_unavailable',
-  /** Worker or Blob URL creation threw. */
   WORKER_START_FAILED = 'worker_start_failed',
-  /** Benchmark did not finish before the configured worker timeout. */
   WORKER_TIMEOUT = 'worker_timeout',
-  /** Worker raised an error before returning a response. */
   WORKER_RUNTIME_ERROR = 'worker_runtime_error',
-  /** Worker completed but reported that the benchmark failed. */
   WORKER_BENCHMARK_FAILED = 'worker_benchmark_failed',
-  /** Worker response is incomplete or contains an invalid timing. */
   INVALID_MEASUREMENT = 'invalid_measurement',
   /** Page was hidden during the benchmark, which can distort its timing. */
   BACKGROUND_TAB = 'background_tab',
@@ -43,26 +37,24 @@ export enum WasmRuntimeUncertainReason {
   RATIOS_BETWEEN_THRESHOLDS = 'ratios_between_thresholds',
 }
 
-interface WasmRuntimeMeasurements {
+/** Additional context for an unknown or uncertain result. */
+export type WasmRuntimeReason = WasmRuntimeUnknownReason | WasmRuntimeUncertainReason;
+
+/** Measurements produced by a completed benchmark. */
+export interface WasmRuntimeMeasurements {
+  /** Divide time relative to add time. */
   divRatio: number;
+  /** Square root time relative to add time. */
   sqrtRatio: number;
+  /** Time for one add operation in nanoseconds. */
   addNsPerOp: number;
+  /** Typical add benchmark time in milliseconds. */
   addMedianMs: number;
+  /** Typical divide benchmark time in milliseconds. */
   divMedianMs: number;
+  /** Typical square root benchmark time in milliseconds. */
   sqrtMedianMs: number;
 }
-
-/** Keeps the human-readable uncertainty message consistent in logs and telemetry. */
-const UNCERTAIN_DETAIL_PREFIX = 'Measurements do not clearly classify WASM as fast or slow.';
-
-/**
- * Formats an uncertain result for logs and telemetry.
- *
- * @param measurements - Values used to classify the WASM runtime.
- * @returns A generic explanation followed by the measurement values.
- */
-const formatUncertainDetail = (measurements: WasmRuntimeMeasurements): string =>
-  `${UNCERTAIN_DETAIL_PREFIX} divRatio=${measurements.divRatio}, sqrtRatio=${measurements.sqrtRatio}, addNsPerOp=${measurements.addNsPerOp}, addMedianMs=${measurements.addMedianMs}ms, divMedianMs=${measurements.divMedianMs}ms, sqrtMedianMs=${measurements.sqrtMedianMs}ms`;
 
 /**
  * Result of the WASM runtime probe. Used to decide whether to allow real-time
@@ -74,27 +66,10 @@ export interface WasmRuntimeResult {
   status: WasmRuntimeStatus;
   /** Product capability derived from {@link status}. */
   capability: CapabilityState;
-  /** See {@link WasmRuntimeUnknownReason}. */
-  unknownReason: WasmRuntimeUnknownReason | null;
-  /** See {@link WasmRuntimeUncertainReason}. */
-  uncertainReason: WasmRuntimeUncertainReason | null;
-  /** Human-readable uncertainty explanation with measurements for logs and telemetry. */
-  uncertainDetail: string | null;
-  /** Divide time relative to add time. High suggests JIT. Low near 2 suggests an interpreter. */
-  divRatio: number | null;
-  /**
-   * Square root time relative to add time. Uses a different CPU execution unit than
-   * divide, providing an independent signal.
-   */
-  sqrtRatio: number | null;
-  /** Time for one add operation in nanoseconds. Used as a slow signal, but not to mark OK. */
-  addNsPerOp: number | null;
-  /** Typical add benchmark time in milliseconds. */
-  addMedianMs: number | null;
-  /** Typical divide benchmark time in milliseconds. */
-  divMedianMs: number | null;
-  /** Typical square root benchmark time in milliseconds. */
-  sqrtMedianMs: number | null;
+  /** Additional context for an unknown or uncertain status. */
+  reason: WasmRuntimeReason | null;
+  /** Benchmark measurements when useful data was produced. */
+  measurements: WasmRuntimeMeasurements | null;
 }
 
 /** Divide ratio at or above this value indicates fast WASM. */
@@ -137,6 +112,17 @@ interface WorkerResponse {
   sqrtMedianMs?: number;
 }
 
+/**
+ * Checks that a worker response contains complete, usable measurements.
+ *
+ * @param response - Worker response to validate.
+ * @returns Whether every measurement is finite and positive.
+ */
+const hasValidMeasurements = (response: WorkerResponse): response is Required<WorkerResponse> =>
+  [response.ops, response.addMedianMs, response.divMedianMs, response.sqrtMedianMs].every(
+    (value) => typeof value === 'number' && Number.isFinite(value) && value > 0
+  );
+
 type WorkerResponseOutcome =
   | { type: 'response'; response: WorkerResponse }
   | {
@@ -169,55 +155,23 @@ export class WasmRuntimeProbe {
   }
 
   /**
-   * Keeps status-specific reason and detail fields consistent.
+   * Derives capability while keeping result construction in one place.
    *
    * @param status - Classified status.
-   * @param measurements - Available benchmark measurements.
-   * @param unknownReason - Optional unknown result detail.
-   * @param uncertainReason - Optional uncertain result detail.
+   * @param reason - Additional result context.
+   * @param measurements - Useful benchmark measurements.
    * @returns Assembled {@link WasmRuntimeResult}.
    */
   private static buildResult(
     status: WasmRuntimeStatus,
-    measurements?: Partial<WasmRuntimeMeasurements>,
-    unknownReason?: WasmRuntimeUnknownReason,
-    uncertainReason?: WasmRuntimeUncertainReason
+    reason: WasmRuntimeReason | null = null,
+    measurements: WasmRuntimeMeasurements | null = null
   ): WasmRuntimeResult {
-    const hasFullMetrics =
-      measurements?.divRatio !== undefined &&
-      measurements.sqrtRatio !== undefined &&
-      measurements.addNsPerOp !== undefined &&
-      measurements.addMedianMs !== undefined &&
-      measurements.divMedianMs !== undefined &&
-      measurements.sqrtMedianMs !== undefined;
-
-    const uncertainDetail =
-      status === WasmRuntimeStatus.UNCERTAIN && hasFullMetrics
-        ? formatUncertainDetail({
-            divRatio: measurements.divRatio as number,
-            sqrtRatio: measurements.sqrtRatio as number,
-            addNsPerOp: measurements.addNsPerOp as number,
-            addMedianMs: measurements.addMedianMs as number,
-            divMedianMs: measurements.divMedianMs as number,
-            sqrtMedianMs: measurements.sqrtMedianMs as number,
-          })
-        : null;
-
     return {
       status,
       capability: statusToCapability(status),
-      unknownReason:
-        status === WasmRuntimeStatus.UNKNOWN
-          ? unknownReason ?? WasmRuntimeUnknownReason.INVALID_MEASUREMENT
-          : null,
-      uncertainReason: status === WasmRuntimeStatus.UNCERTAIN ? uncertainReason ?? null : null,
-      uncertainDetail,
-      divRatio: measurements?.divRatio ?? null,
-      sqrtRatio: measurements?.sqrtRatio ?? null,
-      addNsPerOp: measurements?.addNsPerOp ?? null,
-      addMedianMs: measurements?.addMedianMs ?? null,
-      divMedianMs: measurements?.divMedianMs ?? null,
-      sqrtMedianMs: measurements?.sqrtMedianMs ?? null,
+      reason,
+      measurements,
     };
   }
 
@@ -238,7 +192,6 @@ export class WasmRuntimeProbe {
     ) {
       return this.buildResult(
         WasmRuntimeStatus.UNKNOWN,
-        undefined,
         WasmRuntimeUnknownReason.WORKER_UNAVAILABLE
       );
     }
@@ -247,7 +200,6 @@ export class WasmRuntimeProbe {
     if (!started) {
       return this.buildResult(
         WasmRuntimeStatus.UNKNOWN,
-        undefined,
         WasmRuntimeUnknownReason.WORKER_START_FAILED
       );
     }
@@ -280,7 +232,7 @@ export class WasmRuntimeProbe {
       });
 
       if (outcome.type === 'no_response') {
-        return this.buildResult(WasmRuntimeStatus.UNKNOWN, undefined, outcome.reason);
+        return this.buildResult(WasmRuntimeStatus.UNKNOWN, outcome.reason);
       }
 
       return this.classify(outcome.response);
@@ -301,74 +253,59 @@ export class WasmRuntimeProbe {
     if (!response.ok) {
       return this.buildResult(
         WasmRuntimeStatus.UNKNOWN,
-        undefined,
         WasmRuntimeUnknownReason.WORKER_BENCHMARK_FAILED
       );
     }
 
-    if (
-      typeof response.ops !== 'number' ||
-      response.ops <= 0 ||
-      typeof response.addMedianMs !== 'number' ||
-      response.addMedianMs <= 0 ||
-      typeof response.divMedianMs !== 'number' ||
-      typeof response.sqrtMedianMs !== 'number'
-    ) {
+    if (!hasValidMeasurements(response)) {
       return this.buildResult(
         WasmRuntimeStatus.UNKNOWN,
-        undefined,
         WasmRuntimeUnknownReason.INVALID_MEASUREMENT
       );
     }
 
     const { addMedianMs, divMedianMs, sqrtMedianMs } = response;
     // eslint-disable-next-line jsdoc/require-jsdoc
-    const round3 = (v: number): number => Number(v.toFixed(3));
+    const roundToThreeDecimals = (value: number): number => Number(value.toFixed(3));
 
     const divRatio = divMedianMs / addMedianMs;
     const sqrtRatio = sqrtMedianMs / addMedianMs;
     const addNsPerOp = (addMedianMs * 1e6) / response.ops;
 
-    const fastSignal = divRatio >= DIV_FAST_RATIO || sqrtRatio >= SQRT_FAST_RATIO;
-    const slowSignalRatio = divRatio <= DIV_SLOW_RATIO;
-    const interpAbs = addNsPerOp > INTERP_ADD_NS_FLOOR;
-    const workRan = divMedianMs >= MIN_DIV_MEDIAN_MS;
-    const hidden = typeof document !== 'undefined' && document.visibilityState === 'hidden';
+    const hasFastRatio = divRatio >= DIV_FAST_RATIO || sqrtRatio >= SQRT_FAST_RATIO;
+    const hasSlowDivideRatio = divRatio <= DIV_SLOW_RATIO;
+    const hasSlowAddCost = addNsPerOp > INTERP_ADD_NS_FLOOR;
+    const hasSufficientDivideTiming = divMedianMs >= MIN_DIV_MEDIAN_MS;
+    const isPageHidden = typeof document !== 'undefined' && document.visibilityState === 'hidden';
 
     let status: WasmRuntimeStatus;
-    let unknownReason: WasmRuntimeUnknownReason | undefined;
-    let uncertainReason: WasmRuntimeUncertainReason | undefined;
-    if (hidden) {
+    let reason: WasmRuntimeReason | null = null;
+    if (isPageHidden) {
       status = WasmRuntimeStatus.UNKNOWN;
-      unknownReason = WasmRuntimeUnknownReason.BACKGROUND_TAB;
-    } else if (!workRan) {
+      reason = WasmRuntimeUnknownReason.BACKGROUND_TAB;
+    } else if (!hasSufficientDivideTiming) {
       status = WasmRuntimeStatus.UNKNOWN;
-      unknownReason = WasmRuntimeUnknownReason.TIMING_SAMPLE_TOO_SMALL;
-    } else if (fastSignal && interpAbs) {
+      reason = WasmRuntimeUnknownReason.TIMING_SAMPLE_TOO_SMALL;
+    } else if (hasFastRatio && hasSlowAddCost) {
       status = WasmRuntimeStatus.UNCERTAIN;
-      uncertainReason = WasmRuntimeUncertainReason.FAST_RATIO_SLOW_ADD;
-    } else if (fastSignal) {
+      reason = WasmRuntimeUncertainReason.FAST_RATIO_SLOW_ADD;
+    } else if (hasFastRatio) {
       status = WasmRuntimeStatus.OK;
-    } else if (slowSignalRatio || interpAbs) {
+    } else if (hasSlowDivideRatio || hasSlowAddCost) {
       status = WasmRuntimeStatus.SLOW;
     } else {
       status = WasmRuntimeStatus.UNCERTAIN;
-      uncertainReason = WasmRuntimeUncertainReason.RATIOS_BETWEEN_THRESHOLDS;
+      reason = WasmRuntimeUncertainReason.RATIOS_BETWEEN_THRESHOLDS;
     }
 
-    return this.buildResult(
-      status,
-      {
-        divRatio: round3(divRatio),
-        sqrtRatio: round3(sqrtRatio),
-        addNsPerOp: round3(addNsPerOp),
-        addMedianMs: round3(addMedianMs),
-        divMedianMs: round3(divMedianMs),
-        sqrtMedianMs: round3(sqrtMedianMs),
-      },
-      unknownReason,
-      uncertainReason
-    );
+    return this.buildResult(status, reason, {
+      divRatio: roundToThreeDecimals(divRatio),
+      sqrtRatio: roundToThreeDecimals(sqrtRatio),
+      addNsPerOp: roundToThreeDecimals(addNsPerOp),
+      addMedianMs: roundToThreeDecimals(addMedianMs),
+      divMedianMs: roundToThreeDecimals(divMedianMs),
+      sqrtMedianMs: roundToThreeDecimals(sqrtMedianMs),
+    });
   }
 
   /**
