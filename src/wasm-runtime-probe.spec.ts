@@ -159,9 +159,9 @@ describe('WasmRuntimeProbe', () => {
 
       expect(result.status).toBe(WasmRuntimeStatus.UNCERTAIN);
       expect(result.capability).toBe(CapabilityState.UNKNOWN);
-      expect(result.uncertainReason).toBe(WasmRuntimeUncertainReason.CONFLICTING_SIGNALS);
+      expect(result.uncertainReason).toBe(WasmRuntimeUncertainReason.FAST_RATIO_SLOW_ADD);
       expect(result.uncertainDetail).toContain(
-        'Different parts of the measurement do not point to the same outcome.'
+        'Measurements do not clearly classify WASM as fast or slow.'
       );
       expect(result.uncertainDetail).toMatch(/divRatio=5, sqrtRatio=12, addNsPerOp=2\.5/);
     });
@@ -174,7 +174,7 @@ describe('WasmRuntimeProbe', () => {
       const result = await WasmRuntimeProbe.check();
 
       expect(result.status).toBe(WasmRuntimeStatus.UNCERTAIN);
-      expect(result.uncertainReason).toBe(WasmRuntimeUncertainReason.RATIOS_INCONCLUSIVE);
+      expect(result.uncertainReason).toBe(WasmRuntimeUncertainReason.RATIOS_BETWEEN_THRESHOLDS);
       expect(result.uncertainDetail).toContain('addMedianMs=10ms');
     });
 

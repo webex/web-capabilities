@@ -9,16 +9,13 @@ export enum WasmRuntimeStatus {
   SLOW = 'slow',
   /** WASM missing or will not compile. */
   DISABLED = 'disabled',
-  /** Different parts of the measurement do not point to the same thing. See {@link WasmRuntimeResult.uncertainReason}. */
+  /** Measurements do not clearly classify WASM as fast or slow. See {@link WasmRuntimeResult.uncertainReason}. */
   UNCERTAIN = 'uncertain',
-  /** Probe could not produce a trustworthy measurement. See {@link WasmRuntimeResult.unknownReason}. */
+  /** Probe could not complete or validate a measurement. See {@link WasmRuntimeResult.unknownReason}. */
   UNKNOWN = 'unknown',
 }
 
-/**
- * Why {@link WasmRuntimeStatus.UNKNOWN} was returned. Set only when status is unknown.
- * Null for ok, slow, disabled, and uncertain.
- */
+/** Why {@link WasmRuntimeStatus.UNKNOWN} was returned. Set only when status is unknown. */
 export enum WasmRuntimeUnknownReason {
   /** No Web Worker or Blob URL support in this environment. */
   WORKER_UNAVAILABLE = 'worker_unavailable',
@@ -28,40 +25,36 @@ export enum WasmRuntimeUnknownReason {
   WORKER_TIMEOUT = 'worker_timeout',
   /** Worker onerror or ok false from the benchmark script. */
   WORKER_BENCHMARK_FAILED = 'worker_benchmark_failed',
-  /** Reply missing fields or non-positive timings. */
+  /** Worker response is incomplete or contains an invalid timing. */
   INVALID_MEASUREMENT = 'invalid_measurement',
-  /** Page/tab was hidden so timers are not trustworthy. */
+  /** Page was hidden during the benchmark, which can distort its timing. */
   BACKGROUND_TAB = 'background_tab',
-  /** Div kernel median too small. The timed loop probably did not run. */
+  /** Divide benchmark finished too quickly to classify the runtime. */
   TIMING_SAMPLE_TOO_SMALL = 'timing_sample_too_small',
 }
 
-/**
- * Why {@link WasmRuntimeStatus.UNCERTAIN} was returned. Set only when status is uncertain.
- * Null for ok, slow, disabled, and unknown.
- */
+/** Why {@link WasmRuntimeStatus.UNCERTAIN} was returned. Set only when status is uncertain. */
 export enum WasmRuntimeUncertainReason {
-  /** Op-cost ratios look fast but absolute add cost looks interpreter-slow. */
-  CONFLICTING_SIGNALS = 'conflicting_signals',
-  /** Ratios sit between the fast and slow calibration bars with no clear slow add cost. */
-  RATIOS_INCONCLUSIVE = 'ratios_inconclusive',
+  /** Divide or sqrt ratio indicates fast WASM, but add cost indicates slow WASM. */
+  FAST_RATIO_SLOW_ADD = 'fast_ratio_slow_add',
+  /** Ratios are neither clearly fast nor clearly slow. */
+  RATIOS_BETWEEN_THRESHOLDS = 'ratios_between_thresholds',
 }
 
-/** Log/telemetry prefix when {@link WasmRuntimeStatus.UNCERTAIN}. */
-const UNCERTAIN_DETAIL_PREFIX =
-  'Different parts of the measurement do not point to the same outcome.';
+/** Human-readable explanation included with uncertain measurements. */
+const UNCERTAIN_DETAIL_PREFIX = 'Measurements do not clearly classify WASM as fast or slow.';
 
 /**
- * Builds the uncertain detail string for logs and telemetry.
+ * Formats an uncertain result for logs and telemetry.
  *
- * @param metrics - Rounded classification metrics.
- * @param metrics.divRatio - Divide median divided by add median.
- * @param metrics.sqrtRatio - Sqrt median divided by add median.
- * @param metrics.addNsPerOp - Nanoseconds per add op.
- * @param metrics.addMedianMs - Median add kernel time in ms.
- * @param metrics.divMedianMs - Median div kernel time in ms.
- * @param metrics.sqrtMedianMs - Median sqrt kernel time in ms.
- * @returns Detail string with {@link UNCERTAIN_DETAIL_PREFIX} and metric values.
+ * @param metrics - Measurements used to classify the WASM runtime.
+ * @param metrics.divRatio - Divide time relative to add time.
+ * @param metrics.sqrtRatio - Square root time relative to add time.
+ * @param metrics.addNsPerOp - Time for one add operation in nanoseconds.
+ * @param metrics.addMedianMs - Typical add benchmark time in milliseconds.
+ * @param metrics.divMedianMs - Typical divide benchmark time in milliseconds.
+ * @param metrics.sqrtMedianMs - Typical square root benchmark time in milliseconds.
+ * @returns A generic explanation followed by the measurement values.
  */
 const formatUncertainDetail = (metrics: {
   divRatio: number;
@@ -79,47 +72,45 @@ const formatUncertainDetail = (metrics: {
  * slow interpreter.
  */
 export interface WasmRuntimeResult {
+  /** Probe classification. */
   status: WasmRuntimeStatus;
+  /** Capability derived from the probe classification. */
   capability: CapabilityState;
-  /**
-   * When status is {@link WasmRuntimeStatus.UNKNOWN}, which guard or measurement
-   * problem applied. Otherwise null.
-   */
+  /** Reason the probe could not complete or validate a measurement. */
   unknownReason: WasmRuntimeUnknownReason | null;
-  /**
-   * When status is {@link WasmRuntimeStatus.UNCERTAIN}, which disagreement pattern
-   * applied. Otherwise null.
-   */
+  /** Reason the measurements did not clearly indicate fast or slow WASM. */
   uncertainReason: WasmRuntimeUncertainReason | null;
-  /**
-   * When status is {@link WasmRuntimeStatus.UNCERTAIN}, generic explanation plus
-   * main metrics for logs and telemetry. Otherwise null.
-   */
+  /** Human-readable uncertainty explanation with measurements for logs and telemetry. */
   uncertainDetail: string | null;
-  /** Divide time divided by add time. High means JIT. Low near 2 means interpreter. */
+  /** Divide time relative to add time. High suggests JIT. Low near 2 suggests an interpreter. */
   divRatio: number | null;
   /**
-   * Sqrt time divided by add time. Uses the FP sqrt unit, not the integer divider,
-   * so a chip with a fast divider still has a second signal.
+   * Square root time relative to add time. Uses a different CPU execution unit than
+   * divide, providing an independent signal.
    */
   sqrtRatio: number | null;
-  /** Nanoseconds per add op. Scales with CPU clock. Slow hint only, not used alone for OK. */
+  /** Time for one add operation in nanoseconds. Used as a slow signal, but not to mark OK. */
   addNsPerOp: number | null;
+  /** Typical add benchmark time in milliseconds. */
   addMedianMs: number | null;
+  /** Typical divide benchmark time in milliseconds. */
   divMedianMs: number | null;
+  /** Typical square root benchmark time in milliseconds. */
   sqrtMedianMs: number | null;
 }
 
-// Classification thresholds. Calibration constants — retune when re-benchmarking.
+// Calibration values used to classify the benchmark measurements.
+/** Divide ratio at or above this value indicates fast WASM. */
 const DIV_FAST_RATIO = 4.0;
+/** Divide ratio at or below this value indicates slow WASM. */
 const DIV_SLOW_RATIO = 3.0;
-// Sqrt/add bar is higher than div/add on both JIT and interpreter engines.
+/** Square root ratio at or above this value provides another fast WASM signal. */
 const SQRT_FAST_RATIO = 8.0;
-// Absolute add cost can flag interpreter speed. It never overrides a fast ratio alone.
+/** Add cost above this value indicates slow WASM unless a fast ratio disagrees. */
 const INTERP_ADD_NS_FLOOR = 1.2;
-// Integer div is slow. A tiny div median means the benchmark barely ran.
+/** Divide samples below this duration are too short to classify. */
 const MIN_DIV_MEDIAN_MS = 8;
-// ~16M inner ops, 5 trials. Timeout sized for the slowest expected interpreter run.
+/** Maximum time allowed for the worker benchmark to finish. */
 const WORKER_TIMEOUT_MS = 8000;
 
 /**
@@ -231,10 +222,7 @@ export class WasmRuntimeProbe {
         status === WasmRuntimeStatus.UNKNOWN
           ? unknownReason ?? WasmRuntimeUnknownReason.INVALID_MEASUREMENT
           : null,
-      uncertainReason:
-        status === WasmRuntimeStatus.UNCERTAIN
-          ? uncertainReason ?? WasmRuntimeUncertainReason.RATIOS_INCONCLUSIVE
-          : null,
+      uncertainReason: status === WasmRuntimeStatus.UNCERTAIN ? uncertainReason ?? null : null,
       uncertainDetail,
       divRatio: metrics?.divRatio ?? null,
       sqrtRatio: metrics?.sqrtRatio ?? null,
@@ -362,17 +350,17 @@ export class WasmRuntimeProbe {
       status = WasmRuntimeStatus.UNKNOWN;
       unknownReason = WasmRuntimeUnknownReason.TIMING_SAMPLE_TOO_SMALL;
     } else if (fastSignal && interpAbs) {
-      // Different parts of the measurement do not point to the same thing (ratios vs add cost).
+      // Ratios indicate fast WASM while absolute add cost indicates slow WASM.
       status = WasmRuntimeStatus.UNCERTAIN;
-      uncertainReason = WasmRuntimeUncertainReason.CONFLICTING_SIGNALS;
+      uncertainReason = WasmRuntimeUncertainReason.FAST_RATIO_SLOW_ADD;
     } else if (fastSignal) {
       status = WasmRuntimeStatus.OK;
     } else if (slowSignalRatio || interpAbs) {
       status = WasmRuntimeStatus.SLOW;
     } else {
-      // Different parts of the measurement do not point to the same thing (ratios in gray zone).
+      // Ratios fall between the calibrated fast and slow ranges.
       status = WasmRuntimeStatus.UNCERTAIN;
-      uncertainReason = WasmRuntimeUncertainReason.RATIOS_INCONCLUSIVE;
+      uncertainReason = WasmRuntimeUncertainReason.RATIOS_BETWEEN_THRESHOLDS;
     }
 
     return this.buildResult(
