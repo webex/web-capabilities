@@ -1,47 +1,21 @@
 /*
- * wasm-runtime-probe.worker.js — hardware-power-INDEPENDENT WASM JIT probe.
+ * WASM runtime benchmark worker. Inlined into wasm-runtime-probe.ts via Blob URL.
  *
- * Inlined as a string at build time and started from a Blob URL by
- * wasm-runtime-probe.ts; kept as a real file so it stays readable.
+ * Times dependent-chain add / div / sqrt kernels; main thread uses div/add and
+ * sqrt/add ratios so CPU clock mostly cancels out.
  *
- * WHAT IT MEASURES
- * ----------------
- * It times three dependent-chain WASM kernels on the SAME cpu, unrolled so the
- * inner op dominates loop overhead. Each is latency-bound (every op depends on
- * the previous accumulator), which is the only form an interpreter cannot hide:
+ * Counterintuitive: HIGH ratio means JIT OK, LOW (~2) means interpreted WASM.
+ * Thresholds are in wasm-runtime-probe.ts — do not invert ratios when classifying.
  *
- *   add  : acc  = acc + tmp          (cheap  — integer ALU)
- *   div  : acc  = acc / tmp          (costly — INTEGER divider unit)
- *   sqrt : facc = sqrt(facc + tmp)   (costly — FP SQRT unit, a different unit)
- *
- * The MAIN THREAD then compares them as ratios (div/add, sqrt/add). A ratio
- * cancels out raw CPU speed, so it describes the ENGINE, not the machine:
- *   JIT ON  -> real hardware op-costs show through -> ratios HIGH (div ~5-30x)
- *   JIT OFF -> per-op interpreter dispatch overhead swamps the cheap add, so
- *              both gaps collapse                  -> ratios LOW  (~2x)
- * Two different execution units (integer divider vs FP sqrt) mean a single
- * hardware quirk (e.g. a very fast divider) can't fool both signals.
- *
- * The direction reads backwards on purpose: a HIGH ratio is healthy, a LOW one
- * (~2) is the interpreter. Don't invert it — see EDGE-BNR-CASE-CONTEXT.md
- * §3.3/§4.1 for the measurements behind this.
- *
- * This worker only MEASURES. It returns raw medians so the main thread can
- * classify and re-threshold per feature. Changing the kernels or op counts
- * invalidates the calibrated thresholds in wasm-runtime-probe.ts.
- *
- * Protocol: main thread posts 'start'; replies
- *   { ok: true, ops, addMedianMs, divMedianMs, sqrtMedianMs }
- * or { ok: false }.
+ * postMessage('start') -> { ok, ops, addMedianMs, divMedianMs, sqrtMedianMs } or { ok: false }.
  */
 self.onmessage = function onProbeStart() {
   try {
     var UNROLL = 16;
     var LOOPS = 1000000;
-    var OPS = LOOPS * UNROLL; // ~16M effective inner ops per timed run
+    var OPS = LOOPS * UNROLL;
     var TRIALS = 5;
 
-    // --- LEB128 + section helpers (build a tiny module in memory, nothing to fetch) ---
     var encodeU32 = function encodeU32(value) {
       var out = [];
       do {
@@ -53,7 +27,6 @@ self.onmessage = function onProbeStart() {
       return out;
     };
 
-    // A section is one labelled block of the file: [id, length, ...bytes].
     var section = function section(id, bytes) {
       return [id].concat(encodeU32(bytes.length)).concat(bytes);
     };
@@ -64,23 +37,21 @@ self.onmessage = function onProbeStart() {
       });
     };
 
-    // One export entry: name, then 0x00 (function kind) and the function index.
     var exportEntry = function exportEntry(name, funcIndex) {
       var chars = toCharCodes(name);
       return encodeU32(chars.length).concat(chars).concat([0x00, funcIndex]);
     };
 
-    var I32 = 0x7f; // WASM's code for the 32-bit integer type.
-    var F64 = 0x7c; // WASM's code for the 64-bit float type.
+    var I32 = 0x7f;
+    var F64 = 0x7c;
 
-    // Two signatures: T0 (i32)->i32 for add/div, T1 (i32)->f64 for sqrt.
     var typeSec = section(
       1,
       encodeU32(2)
         .concat([0x60, 0x01, I32, 0x01, I32])
         .concat([0x60, 0x01, I32, 0x01, F64])
     );
-    var funcSec = section(3, encodeU32(3).concat([0x00, 0x00, 0x01])); // add:T0 div:T0 sqrt:T1
+    var funcSec = section(3, encodeU32(3).concat([0x00, 0x00, 0x01]));
     var exportSec = section(
       7,
       encodeU32(3)
@@ -89,32 +60,26 @@ self.onmessage = function onProbeStart() {
         .concat(exportEntry('sqrt', 2))
     );
 
-    // --- integer kernel (add/div): identical scaffold, ONE opcode differs ---
-    // locals (beyond param0 = n): i(1), acc(2), tmp(3), all i32.
     var buildIntBody = function buildIntBody(opcode) {
-      var body = [1, 3, I32].concat([0x03, 0x40]); // 3 i32 locals; loop (void)
-      body = body.concat([0x20, 0x01, 0x41, 0x01, 0x72, 0x21, 0x03]); // tmp = (i | 1)
+      var body = [1, 3, I32].concat([0x03, 0x40]);
+      body = body.concat([0x20, 0x01, 0x41, 0x01, 0x72, 0x21, 0x03]);
       for (var k = 0; k < UNROLL; k++) {
-        body = body.concat([0x20, 0x02, 0x20, 0x03, opcode, 0x21, 0x02]); // acc = acc OP tmp
+        body = body.concat([0x20, 0x02, 0x20, 0x03, opcode, 0x21, 0x02]);
       }
-      // i += 1; if (i < n) continue loop
       body = body.concat([0x20, 0x01, 0x41, 0x01, 0x6a, 0x22, 0x01, 0x20, 0x00, 0x48, 0x0d, 0x00]);
-      body = body.concat([0x0b, 0x20, 0x02, 0x0b]); // end loop; return acc; end func
+      body = body.concat([0x0b, 0x20, 0x02, 0x0b]);
       return encodeU32(body.length).concat(body);
     };
-    var addCode = buildIntBody(0x6a); // i32.add
-    var divCode = buildIntBody(0x6e); // i32.div_u (dependent latency chain)
+    var addCode = buildIntBody(0x6a);
+    var divCode = buildIntBody(0x6e);
 
-    // --- FP sqrt kernel: dependent chain on the FP sqrt unit ---
-    // locals (beyond param0 = n): i(1) i32, facc(2) f64.
     var buildSqrtBody = function buildSqrtBody() {
-      var body = [2, 1, I32, 1, F64].concat([0x03, 0x40]); // locals i(i32), facc(f64); loop (void)
+      var body = [2, 1, I32, 1, F64].concat([0x03, 0x40]);
       for (var k = 0; k < UNROLL; k++) {
-        // facc = sqrt(facc + f64(i | 1))
         body = body.concat([0x20, 0x02, 0x20, 0x01, 0x41, 0x01, 0x72, 0xb8, 0xa0, 0x9f, 0x21, 0x02]);
       }
       body = body.concat([0x20, 0x01, 0x41, 0x01, 0x6a, 0x22, 0x01, 0x20, 0x00, 0x48, 0x0d, 0x00]);
-      body = body.concat([0x0b, 0x20, 0x02, 0x0b]); // end loop; return facc; end func
+      body = body.concat([0x0b, 0x20, 0x02, 0x0b]);
       return encodeU32(body.length).concat(body);
     };
     var sqrtCode = buildSqrtBody();
@@ -125,7 +90,7 @@ self.onmessage = function onProbeStart() {
     );
     var exports = new WebAssembly.Instance(new WebAssembly.Module(bytes)).exports;
 
-    // Median, not mean: one scheduler hiccup in a trial must not move the result.
+    // Median dampens one bad scheduler slice in a trial.
     var median = function median(samples) {
       var sorted = samples.slice().sort(function ascending(a, b) {
         return a - b;
@@ -133,7 +98,7 @@ self.onmessage = function onProbeStart() {
       return sorted[Math.floor(sorted.length / 2)];
     };
 
-    // Warm up / tier up all three so the JIT (if on) has compiled before timing.
+    // Tier-up before timing so JIT-on engines are measured compiled, not cold.
     exports.add(200000);
     exports.div(200000);
     exports.sqrt(200000);
@@ -141,8 +106,7 @@ self.onmessage = function onProbeStart() {
     exports.div(200000);
     exports.sqrt(200000);
 
-    // Interleaved trials: contention in any round hits all three equally, so the
-    // per-kernel median stays comparable and the ratios survive a load spike.
+    // Round-robin trials so load spikes affect all three kernels equally.
     var addMs = [];
     var divMs = [];
     var sqrtMs = [];

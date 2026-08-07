@@ -11,8 +11,8 @@ interface FakeReply {
 
 const OPS = 16_000_000;
 
-// Realistic measured signatures (see wasm-runtime-probe calibration matrix).
-// JIT ON (Mac Chrome): add 6.5ms, div 35.6, sqrt 80.6 -> divRatio 5.5, addNs 0.41.
+// Lab-shaped worker replies (calibration matrix).
+// JIT on (Mac Chrome): add 6.5, div 35.6, sqrt 80.6.
 const FAST_REPLY: FakeReply = {
   ok: true,
   ops: OPS,
@@ -20,7 +20,7 @@ const FAST_REPLY: FakeReply = {
   divMedianMs: 35.6,
   sqrtMedianMs: 80.6,
 };
-// JIT OFF (Edge, JIT disabled): add 32.1, div 60.6, sqrt 111.5 -> divRatio 1.9, addNs 2.0.
+// JIT off (Edge): add 32.1, div 60.6, sqrt 111.5.
 const SLOW_REPLY: FakeReply = {
   ok: true,
   ops: OPS,
@@ -29,38 +29,28 @@ const SLOW_REPLY: FakeReply = {
   sqrtMedianMs: 111.5,
 };
 
-// Shared state that controls how the mock Worker behaves in the current test.
 let workerReply: FakeReply | undefined;
 let workerConstructCount = 0;
 
-/**
- * Fake Worker for jsdom, which has no real one. On postMessage it replies immediately with whatever
- * {@link workerReply} the test set, or stays silent so we can test the timeout path.
- */
+/** Stand-in Worker for jsdom; uses {@link workerReply}. */
 class MockWorker {
   onmessage: ((event: { data: FakeReply }) => void) | null = null;
 
   onerror: (() => void) | null = null;
 
-  /**
-   * Counts how many workers were created, so the caching test can check it.
-   */
+  /** Tracks how many workers tests constructed. */
   constructor() {
     workerConstructCount += 1;
   }
 
-  /**
-   * Sends the configured reply back to the probe, or nothing if none is set.
-   */
+  /** Posts {@link workerReply} to {@link MockWorker.onmessage} when configured. */
   postMessage(): void {
     if (workerReply && this.onmessage) {
       this.onmessage({ data: workerReply });
     }
   }
 
-  /**
-   * Does nothing; just matches the real Worker API.
-   */
+  /** No-op for API parity. */
   // eslint-disable-next-line class-methods-use-this, @typescript-eslint/no-empty-function
   terminate(): void {}
 }
@@ -69,7 +59,6 @@ describe('WasmRuntimeProbe', () => {
   const originalWebAssembly = globalThis.WebAssembly;
 
   beforeEach(() => {
-    // Clear the per-page cache so each test starts fresh (private, reached via a cast).
     (WasmRuntimeProbe as unknown as { cachedResult?: unknown }).cachedResult = undefined;
     workerReply = undefined;
     workerConstructCount = 0;
@@ -192,7 +181,7 @@ describe('WasmRuntimeProbe', () => {
 
     it('should return UNKNOWN when a measurement field is missing', async () => {
       expect.assertions(1);
-      workerReply = { ok: true, ops: OPS, addMedianMs: 6.5 }; // no div/sqrt
+      workerReply = { ok: true, ops: OPS, addMedianMs: 6.5 }; // missing div/sqrt
 
       const result = await WasmRuntimeProbe.check();
 
@@ -211,7 +200,7 @@ describe('WasmRuntimeProbe', () => {
     it('should return UNKNOWN when the worker does not reply before the timeout', async () => {
       expect.assertions(1);
       jest.useFakeTimers();
-      workerReply = undefined; // never replies
+      workerReply = undefined;
 
       const promise = WasmRuntimeProbe.check();
       jest.advanceTimersByTime(8000);

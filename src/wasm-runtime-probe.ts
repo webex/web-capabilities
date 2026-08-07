@@ -1,71 +1,52 @@
 import { CapabilityState, WebCapabilities } from './web-capabilities';
 import WORKER_SRC from './wasm-runtime-probe.worker';
 
-/** Possible results of the WASM runtime probe. */
+/** Outcome of {@link WasmRuntimeProbe.check}. */
 export enum WasmRuntimeStatus {
-  /** Engine runs WASM at full JIT (native) speed. */
+  /** WASM runs at full JIT speed. */
   OK = 'ok',
-  /** Engine interprets WASM (e.g. Edge with JIT disabled by policy) — too slow for real-time effects. */
+  /** WASM runs through a slow interpreter (too slow for real-time effects). */
   SLOW = 'slow',
-  /** WASM is missing or refuses to compile. */
+  /** WASM missing or will not compile. */
   DISABLED = 'disabled',
-  /** Signals conflicted (a throttled-but-healthy JIT, or a slow-divider interpreter) — the probe won't guess. */
+  /** Measurements disagree; do not treat as a confident slow or fast. */
   UNCERTAIN = 'uncertain',
-  /** The probe could not run or measure (no Worker, background tab, timeout, error). */
+  /** Probe could not run (no Worker, timeout, background tab, bad sample). */
   UNKNOWN = 'unknown',
 }
 
 /**
- * Result of the WASM runtime probe. Used to decide whether to allow real-time
- * WASM effects (BNR, VBG), which run poorly when the browser runs WASM through a
- * slow interpreter.
- *
- * The probe is a pure SENSOR: it emits a status plus the raw, hardware-independent
- * metrics so callers can re-threshold per feature without re-running it.
+ * Probe result for real-time WASM effects (BNR, VBG). Includes raw metrics so
+ * callers can change thresholds without re-running the benchmark.
  */
 export interface WasmRuntimeResult {
   status: WasmRuntimeStatus;
   capability: CapabilityState;
-  /** Div/add op-cost ratio — the primary discriminator (JIT high, interpreter ~2). */
+  /** Divide median divided by add median (main JIT vs interpreter signal). */
   divRatio: number | null;
-  /** Sqrt/add op-cost ratio — a second, independent-unit signal (fast-divider rescue). */
+  /** Sqrt median divided by add median (second unit, helps some CPUs). */
   sqrtRatio: number | null;
-  /** Absolute cost of the cheap `add` op in ns/op (hardware-DEPENDENT; interpreter tell). */
+  /** Nanoseconds per add op; scales with clock, used as a slow hint only. */
   addNsPerOp: number | null;
-  /** Median time (ms) of the cheap `add` kernel. */
   addMedianMs: number | null;
-  /** Median time (ms) of the costly integer `div` kernel. */
   divMedianMs: number | null;
-  /** Median time (ms) of the costly FP `sqrt` kernel. */
   sqrtMedianMs: number | null;
 }
 
-// --- Calibrated thresholds (Intel Mac + Windows, 4 engines, JIT on/off, throttled) ---
-// div/add is the PRIMARY discriminator (JIT 5.4-33 vs interpreter 1.8-2.4).
-const DIV_FAST_RATIO = 4.0; // div/add >= this => native code
-const DIV_SLOW_RATIO = 3.0; // div/add <= this => interpreter
-// sqrt/add is a SECONDARY rescue for a fast-divider CPU (e.g. Apple Silicon). It
-// runs ~2x higher than div on BOTH sides (JIT 12-20 vs interp 3.4-4.5), so it
-// needs its OWN, higher bar — reusing div's 4.0 here caused a false 'fast'.
-const SQRT_FAST_RATIO = 8.0; // sqrt/add >= this => native code (div may have sagged)
-// Absolute add cost floor (ns/op). JIT 0.06-0.48 vs interpreter 2.0-2.5. This
-// signal is hardware-DEPENDENT (scales with clock), so it only ever ADDS a slow
-// vote or flags a contradiction — it never overrides a fast ratio.
+// Lab calibration: Intel Mac + Windows, four engines, JIT on/off, throttled runs.
+const DIV_FAST_RATIO = 4.0;
+const DIV_SLOW_RATIO = 3.0;
+// Sqrt/add runs higher than div/add on both JIT and interpreter; needs its own bar.
+const SQRT_FAST_RATIO = 8.0;
+// Interpreter adds are absolutely slower; never overrides a fast ratio alone.
 const INTERP_ADD_NS_FLOOR = 1.2;
-// The integer div kernel is always multi-cycle; if its median is below this the
-// loop didn't really run (timer floor / hostile embedder) — treat as unmeasured.
+// Div is multi-cycle; below this median the timed loop likely did not really run.
 const MIN_DIV_MEDIAN_MS = 8;
-
-// The op-cost probe runs ~16M ops x 5 trials; a heavily throttled interpreter
-// measured ~3.4s, so allow generous headroom.
+// ~16M ops x 5 trials; throttled interpreter needed ~3.4s in lab.
 const WORKER_TIMEOUT_MS = 8000;
 
 /**
- * Maps a probe status to a CAPABLE/NOT_CAPABLE verdict.
- *
- * Only a confident SLOW/DISABLED blocks WASM effects. UNCERTAIN maps to UNKNOWN
- * so the feature keeps its own default (enable) rather than false-blocking a
- * real user whose signals merely conflicted.
+ * Maps probe status to capability. UNCERTAIN stays UNKNOWN so we do not false-block.
  *
  * @param status - The probe {@link WasmRuntimeStatus}.
  * @returns The corresponding {@link CapabilityState}.
@@ -91,23 +72,16 @@ interface WorkerReply {
 }
 
 /**
- * Checks whether this browser runs WebAssembly at full (JIT) speed or through a
- * slow interpreter, by comparing the cost of cheap vs expensive WASM ops. This
- * catches the case where WASM is present but too slow for real-time effects
- * (e.g. Edge with JIT turned off). The quick "disabled" check is instant; the
- * timed benchmark runs off the main thread. The result is cached, so it runs at
- * most once per page.
+ * Detects whether WASM runs at JIT speed or through a slow interpreter (for example
+ * Edge with JIT disabled by policy). Uses a quick disabled check, then a Worker
+ * benchmark. Result is cached for the page lifetime.
  */
 export class WasmRuntimeProbe {
   private static cachedResult?: Promise<WasmRuntimeResult>;
 
   /**
-   * Runs the probe (cached per page) and resolves with the classified result.
-   *
-   * Times three dependent-chain WASM kernels (add / div / sqrt) off the main
-   * thread and compares them as ratios (div/add, sqrt/add). A ratio cancels out
-   * raw CPU speed, so it describes the engine, not the machine: under a slow
-   * interpreter both ratios collapse to ~2 and the probe reports
+   * Runs the probe once per page (cached). Compares WASM op-cost ratios from a Worker;
+   * under a slow interpreter both div/add and sqrt/add collapse near ~2 and status is
    * {@link WasmRuntimeStatus.SLOW}.
    *
    * @returns A promise that resolves with the {@link WasmRuntimeResult}.
@@ -120,17 +94,17 @@ export class WasmRuntimeProbe {
   }
 
   /**
-   * Builds a {@link WasmRuntimeResult} from a status and optional raw metrics.
+   * Assembles a {@link WasmRuntimeResult} from status and optional worker metrics.
    *
-   * @param status - The classified {@link WasmRuntimeStatus}.
-   * @param metrics - Optional raw op-cost metrics to include.
-   * @param metrics.divRatio - The div/add op-cost ratio.
-   * @param metrics.sqrtRatio - The sqrt/add op-cost ratio.
-   * @param metrics.addNsPerOp - The absolute cost of `add` in ns/op.
-   * @param metrics.addMedianMs - Median time of the `add` kernel.
-   * @param metrics.divMedianMs - Median time of the `div` kernel.
-   * @param metrics.sqrtMedianMs - Median time of the `sqrt` kernel.
-   * @returns The assembled {@link WasmRuntimeResult}.
+   * @param status - Classified status.
+   * @param metrics - Optional raw timings from the worker.
+   * @param metrics.divRatio - Divide median divided by add median.
+   * @param metrics.sqrtRatio - Sqrt median divided by add median.
+   * @param metrics.addNsPerOp - Nanoseconds per add op.
+   * @param metrics.addMedianMs - Median add kernel time in ms.
+   * @param metrics.divMedianMs - Median div kernel time in ms.
+   * @param metrics.sqrtMedianMs - Median sqrt kernel time in ms.
+   * @returns Assembled {@link WasmRuntimeResult}.
    */
   private static buildResult(
     status: WasmRuntimeStatus,
@@ -156,16 +130,15 @@ export class WasmRuntimeProbe {
   }
 
   /**
-   * Runs the checks in order: the instant "disabled" check, then the timed Worker benchmark.
+   * Disabled check, then Worker benchmark with timeout and cleanup.
    *
-   * @returns A promise that resolves with the {@link WasmRuntimeResult}.
+   * @returns Classified probe result.
    */
   private static async run(): Promise<WasmRuntimeResult> {
     if (WebCapabilities.supportsWasm() === CapabilityState.NOT_CAPABLE) {
       return this.buildResult(WasmRuntimeStatus.DISABLED);
     }
 
-    // Can't run the benchmark without a Web Worker and a Blob URL.
     if (
       WebCapabilities.supportsWorker() === CapabilityState.NOT_CAPABLE ||
       typeof URL === 'undefined' ||
@@ -205,15 +178,11 @@ export class WasmRuntimeProbe {
   }
 
   /**
-   * Turns the worker's raw measurements into a status + metrics.
+   * Classifies worker medians. Fast div or sqrt ratio wins unless absolute add cost
+   * contradicts it ({@link WasmRuntimeStatus.UNCERTAIN}).
    *
-   * Div/add is the primary discriminator; sqrt/add is an independent-unit rescue
-   * for a fast-divider CPU; the absolute add cost is a one-way interpreter tell.
-   * When a fast ratio and an interpreter-slow add disagree we return UNCERTAIN
-   * rather than guess.
-   *
-   * @param msg - The {@link WorkerReply} from the benchmark worker.
-   * @returns The classified {@link WasmRuntimeResult}.
+   * @param msg - Raw worker reply.
+   * @returns Classified result with rounded metrics.
    */
   private static classify(msg: WorkerReply): WasmRuntimeResult {
     if (
@@ -229,24 +198,16 @@ export class WasmRuntimeProbe {
     }
 
     const { addMedianMs, divMedianMs, sqrtMedianMs } = msg;
-    /**
-     * Rounds a metric to 3 decimals for the report.
-     *
-     * @param v - The value to round.
-     * @returns The value rounded to 3 decimal places.
-     */
-    const round = (v: number): number => Number(v.toFixed(3));
+    // eslint-disable-next-line jsdoc/require-jsdoc
+    const round3 = (v: number): number => Number(v.toFixed(3));
 
     const divRatio = divMedianMs / addMedianMs;
     const sqrtRatio = sqrtMedianMs / addMedianMs;
     const addNsPerOp = (addMedianMs * 1e6) / msg.ops;
 
-    // Ratios are hardware-INDEPENDENT; addNsPerOp is hardware-dependent.
     const fastSignal = divRatio >= DIV_FAST_RATIO || sqrtRatio >= SQRT_FAST_RATIO;
     const slowSignalRatio = divRatio <= DIV_SLOW_RATIO;
     const interpAbs = addNsPerOp > INTERP_ADD_NS_FLOOR;
-    // A background-throttled tab can starve the worker; div is always multi-cycle,
-    // so a tiny div median means nothing measurable really executed.
     const workRan = divMedianMs >= MIN_DIV_MEDIAN_MS;
     const hidden = typeof document !== 'undefined' && document.visibilityState === 'hidden';
 
@@ -254,8 +215,6 @@ export class WasmRuntimeProbe {
     if (hidden || !workRan) {
       status = WasmRuntimeStatus.UNKNOWN;
     } else if (fastSignal && interpAbs) {
-      // Contradiction: a ratio looks native, but `add` is absolutely interpreter-slow.
-      // Happens on a throttled JIT machine OR a slow-divider interpreter — don't guess.
       status = WasmRuntimeStatus.UNCERTAIN;
     } else if (fastSignal) {
       status = WasmRuntimeStatus.OK;
@@ -266,19 +225,19 @@ export class WasmRuntimeProbe {
     }
 
     return this.buildResult(status, {
-      divRatio: round(divRatio),
-      sqrtRatio: round(sqrtRatio),
-      addNsPerOp: round(addNsPerOp),
-      addMedianMs: round(addMedianMs),
-      divMedianMs: round(divMedianMs),
-      sqrtMedianMs: round(sqrtMedianMs),
+      divRatio: round3(divRatio),
+      sqrtRatio: round3(sqrtRatio),
+      addNsPerOp: round3(addNsPerOp),
+      addMedianMs: round3(addMedianMs),
+      divMedianMs: round3(divMedianMs),
+      sqrtMedianMs: round3(sqrtMedianMs),
     });
   }
 
   /**
-   * Starts the benchmark worker from the inline source (via a Blob URL).
+   * Creates a Worker from the inlined benchmark source.
    *
-   * @returns The worker and its Blob URL, or undefined if creation fails.
+   * @returns Worker plus Blob URL, or undefined if creation fails.
    */
   private static startWorker(): { worker: Worker; url: string } | undefined {
     let url: string | undefined;
