@@ -1,44 +1,65 @@
-import { WasmRuntimeProbe, WasmRuntimeStatus } from './wasm-runtime-probe';
+import {
+  WasmRuntimeProbe,
+  WasmRuntimeStatus,
+  WasmRuntimeUncertainReason,
+  WasmRuntimeUnknownReason,
+} from './wasm-runtime-probe';
 import { CapabilityState } from './web-capabilities';
 
-interface FakeReply {
+interface MockWorkerResponse {
   ok: boolean;
-  wasmMs?: number;
-  jsMs?: number;
+  ops?: number;
+  addMedianMs?: number;
+  divMedianMs?: number;
+  sqrtMedianMs?: number;
 }
 
-// Shared state that controls how the mock Worker behaves in the current test.
-let workerReply: FakeReply | undefined;
-let workerConstructCount = 0;
+const TOTAL_OPERATIONS = 16_000_000;
 
-/**
- * Fake Worker for jsdom, which has no real one. On postMessage it replies immediately with whatever
- * {@link workerReply} the test set, or stays silent so we can test the timeout path.
- */
+const FAST_BENCHMARK_RESPONSE: MockWorkerResponse = {
+  ok: true,
+  ops: TOTAL_OPERATIONS,
+  addMedianMs: 6.5,
+  divMedianMs: 35.6,
+  sqrtMedianMs: 80.6,
+};
+const SLOW_BENCHMARK_RESPONSE: MockWorkerResponse = {
+  ok: true,
+  ops: TOTAL_OPERATIONS,
+  addMedianMs: 32.1,
+  divMedianMs: 60.6,
+  sqrtMedianMs: 111.5,
+};
+
+let workerResponse: MockWorkerResponse | undefined;
+let shouldRaiseWorkerRuntimeError = false;
+let shouldFailWorkerConstruction = false;
+let workerConstructionCount = 0;
+
+/** Mock Worker controlled by test state. */
 class MockWorker {
-  onmessage: ((event: { data: FakeReply }) => void) | null = null;
+  onmessage: ((event: { data: MockWorkerResponse }) => void) | null = null;
 
   onerror: (() => void) | null = null;
 
-  /**
-   * Counts how many workers were created, so the caching test can check it.
-   */
+  /** Creates a worker or simulates a construction failure. */
   constructor() {
-    workerConstructCount += 1;
-  }
-
-  /**
-   * Sends the configured reply back to the probe, or nothing if none is set.
-   */
-  postMessage(): void {
-    if (workerReply && this.onmessage) {
-      this.onmessage({ data: workerReply });
+    workerConstructionCount += 1;
+    if (shouldFailWorkerConstruction) {
+      throw new Error('Worker construction failed');
     }
   }
 
-  /**
-   * Does nothing; just matches the real Worker API.
-   */
+  /** Delivers the configured worker outcome. */
+  postMessage(): void {
+    if (shouldRaiseWorkerRuntimeError && this.onerror) {
+      this.onerror();
+    } else if (workerResponse && this.onmessage) {
+      this.onmessage({ data: workerResponse });
+    }
+  }
+
+  /** Matches the Worker API without test cleanup. */
   // eslint-disable-next-line class-methods-use-this, @typescript-eslint/no-empty-function
   terminate(): void {}
 }
@@ -47,36 +68,42 @@ describe('WasmRuntimeProbe', () => {
   const originalWebAssembly = globalThis.WebAssembly;
 
   beforeEach(() => {
-    // Clear the per-page cache so each test starts fresh (private, reached via a cast).
     (WasmRuntimeProbe as unknown as { cachedResult?: unknown }).cachedResult = undefined;
-    workerReply = undefined;
-    workerConstructCount = 0;
+    workerResponse = undefined;
+    shouldRaiseWorkerRuntimeError = false;
+    shouldFailWorkerConstruction = false;
+    workerConstructionCount = 0;
   });
 
   afterEach(() => {
     (globalThis as { WebAssembly?: typeof WebAssembly }).WebAssembly = originalWebAssembly;
   });
 
-  it('should return DISABLED when WebAssembly is hard-disabled', async () => {
-    expect.assertions(5);
+  it('should return DISABLED when WebAssembly is unavailable', async () => {
+    expect.assertions(1);
     delete (globalThis as { WebAssembly?: typeof WebAssembly }).WebAssembly;
 
     const result = await WasmRuntimeProbe.check();
 
-    expect(result.status).toBe(WasmRuntimeStatus.DISABLED);
-    expect(result.capability).toBe(CapabilityState.NOT_CAPABLE);
-    expect(result.ratio).toBeNull();
-    expect(result.wasmMs).toBeNull();
-    expect(result.jsMs).toBeNull();
+    expect(result).toMatchObject({
+      status: WasmRuntimeStatus.DISABLED,
+      capability: CapabilityState.NOT_CAPABLE,
+      reason: null,
+      measurements: null,
+    });
   });
 
-  it('should return UNKNOWN when Web Workers are not available', async () => {
-    expect.assertions(2);
+  it('should return UNKNOWN when Web Workers are unavailable', async () => {
+    expect.assertions(1);
 
     const result = await WasmRuntimeProbe.check();
 
-    expect(result.status).toBe(WasmRuntimeStatus.UNKNOWN);
-    expect(result.capability).toBe(CapabilityState.UNKNOWN);
+    expect(result).toMatchObject({
+      status: WasmRuntimeStatus.UNKNOWN,
+      capability: CapabilityState.UNKNOWN,
+      reason: WasmRuntimeUnknownReason.WORKER_UNAVAILABLE,
+      measurements: null,
+    });
   });
 
   describe('worker benchmark', () => {
@@ -104,73 +131,190 @@ describe('WasmRuntimeProbe', () => {
       delete (URL as { revokeObjectURL?: unknown }).revokeObjectURL;
     });
 
-    it('should return SLOW when the wasm/js ratio is below the threshold', async () => {
-      expect.assertions(5);
-      workerReply = { ok: true, wasmMs: 25, jsMs: 100 };
+    it('should revoke the Blob URL when Worker construction fails', async () => {
+      expect.assertions(2);
+      shouldFailWorkerConstruction = true;
 
       const result = await WasmRuntimeProbe.check();
 
-      expect(result.status).toBe(WasmRuntimeStatus.SLOW);
-      expect(result.capability).toBe(CapabilityState.NOT_CAPABLE);
-      expect(result.ratio).toBe(0.25);
-      expect(result.wasmMs).toBe(25);
-      expect(result.jsMs).toBe(100);
+      expect(result).toMatchObject({
+        status: WasmRuntimeStatus.UNKNOWN,
+        reason: WasmRuntimeUnknownReason.WORKER_START_FAILED,
+        measurements: null,
+      });
+      expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:mock');
     });
 
-    it('should return OK when the wasm/js ratio is at or above the threshold', async () => {
-      expect.assertions(5);
-      workerReply = { ok: true, wasmMs: 110, jsMs: 100 };
-
-      const result = await WasmRuntimeProbe.check();
-
-      expect(result.status).toBe(WasmRuntimeStatus.OK);
-      expect(result.capability).toBe(CapabilityState.CAPABLE);
-      expect(result.ratio).toBe(1.1);
-      expect(result.wasmMs).toBe(110);
-      expect(result.jsMs).toBe(100);
-    });
-
-    it('should return UNKNOWN when the worker reports a failure', async () => {
+    it('should return OK when measurements indicate fast WASM', async () => {
       expect.assertions(1);
-      workerReply = { ok: false };
+      workerResponse = FAST_BENCHMARK_RESPONSE;
 
       const result = await WasmRuntimeProbe.check();
 
-      expect(result.status).toBe(WasmRuntimeStatus.UNKNOWN);
+      expect(result).toMatchObject({
+        status: WasmRuntimeStatus.OK,
+        capability: CapabilityState.CAPABLE,
+        reason: null,
+        measurements: {
+          divRatio: 5.477,
+          sqrtRatio: 12.4,
+          addNsPerOp: 0.406,
+          addMedianMs: 6.5,
+          divMedianMs: 35.6,
+          sqrtMedianMs: 80.6,
+        },
+      });
     });
 
-    it('should return UNKNOWN when jsMs is not a positive number', async () => {
+    it('should return SLOW when measurements indicate slow WASM', async () => {
       expect.assertions(1);
-      workerReply = { ok: true, wasmMs: 10, jsMs: 0 };
+      workerResponse = SLOW_BENCHMARK_RESPONSE;
 
       const result = await WasmRuntimeProbe.check();
 
-      expect(result.status).toBe(WasmRuntimeStatus.UNKNOWN);
+      expect(result).toMatchObject({
+        status: WasmRuntimeStatus.SLOW,
+        capability: CapabilityState.NOT_CAPABLE,
+        reason: null,
+        measurements: {
+          divRatio: 1.888,
+          sqrtRatio: 3.474,
+          addNsPerOp: 2.006,
+          addMedianMs: 32.1,
+          divMedianMs: 60.6,
+          sqrtMedianMs: 111.5,
+        },
+      });
     });
 
-    it('should return UNKNOWN when the worker does not reply before the timeout', async () => {
+    it('should return UNCERTAIN when fast ratios conflict with slow add timing', async () => {
+      expect.assertions(1);
+      workerResponse = {
+        ok: true,
+        ops: TOTAL_OPERATIONS,
+        addMedianMs: 40,
+        divMedianMs: 200,
+        sqrtMedianMs: 480,
+      };
+
+      const result = await WasmRuntimeProbe.check();
+
+      expect(result).toMatchObject({
+        status: WasmRuntimeStatus.UNCERTAIN,
+        capability: CapabilityState.UNKNOWN,
+        reason: WasmRuntimeUncertainReason.FAST_RATIO_SLOW_ADD,
+        measurements: {
+          divRatio: 5,
+          sqrtRatio: 12,
+          addNsPerOp: 2.5,
+        },
+      });
+    });
+
+    it('should return UNCERTAIN when ratios are between thresholds', async () => {
+      expect.assertions(1);
+      workerResponse = {
+        ok: true,
+        ops: TOTAL_OPERATIONS,
+        addMedianMs: 10,
+        divMedianMs: 35,
+        sqrtMedianMs: 70,
+      };
+
+      const result = await WasmRuntimeProbe.check();
+
+      expect(result).toMatchObject({
+        status: WasmRuntimeStatus.UNCERTAIN,
+        capability: CapabilityState.UNKNOWN,
+        reason: WasmRuntimeUncertainReason.RATIOS_BETWEEN_THRESHOLDS,
+      });
+    });
+
+    it('should return UNKNOWN when divide timing is too short', async () => {
+      expect.assertions(1);
+      workerResponse = {
+        ok: true,
+        ops: TOTAL_OPERATIONS,
+        addMedianMs: 1,
+        divMedianMs: 2,
+        sqrtMedianMs: 5,
+      };
+
+      const result = await WasmRuntimeProbe.check();
+
+      expect(result).toMatchObject({
+        status: WasmRuntimeStatus.UNKNOWN,
+        reason: WasmRuntimeUnknownReason.DIV_TIMING_TOO_SHORT,
+        measurements: { divMedianMs: 2 },
+      });
+    });
+
+    it('should return UNKNOWN when the worker reports benchmark failure', async () => {
+      expect.assertions(1);
+      workerResponse = { ok: false };
+
+      const result = await WasmRuntimeProbe.check();
+
+      expect(result).toMatchObject({
+        status: WasmRuntimeStatus.UNKNOWN,
+        reason: WasmRuntimeUnknownReason.WORKER_BENCHMARK_FAILED,
+        measurements: null,
+      });
+    });
+
+    it('should return UNKNOWN when the worker raises a runtime error', async () => {
+      expect.assertions(1);
+      shouldRaiseWorkerRuntimeError = true;
+
+      const result = await WasmRuntimeProbe.check();
+
+      expect(result).toMatchObject({
+        status: WasmRuntimeStatus.UNKNOWN,
+        reason: WasmRuntimeUnknownReason.WORKER_RUNTIME_ERROR,
+        measurements: null,
+      });
+    });
+
+    it('should reject an incomplete worker response', async () => {
+      expect.assertions(1);
+      workerResponse = { ok: true, ops: TOTAL_OPERATIONS, addMedianMs: 6.5 };
+
+      const result = await WasmRuntimeProbe.check();
+
+      expect(result).toMatchObject({
+        status: WasmRuntimeStatus.UNKNOWN,
+        reason: WasmRuntimeUnknownReason.INVALID_MEASUREMENT,
+        measurements: null,
+      });
+    });
+
+    it('should return UNKNOWN when the worker times out', async () => {
       expect.assertions(1);
       jest.useFakeTimers();
-      workerReply = undefined; // never replies
+      workerResponse = undefined;
 
       const promise = WasmRuntimeProbe.check();
-      jest.advanceTimersByTime(3000);
+      jest.advanceTimersByTime(5000);
       const result = await promise;
 
-      expect(result.status).toBe(WasmRuntimeStatus.UNKNOWN);
+      expect(result).toMatchObject({
+        status: WasmRuntimeStatus.UNKNOWN,
+        reason: WasmRuntimeUnknownReason.WORKER_TIMEOUT,
+        measurements: null,
+      });
       jest.useRealTimers();
     });
 
-    it('should cache the result so repeated calls run the benchmark only once', async () => {
+    it('should run the benchmark once for repeated checks', async () => {
       expect.assertions(2);
-      workerReply = { ok: true, wasmMs: 110, jsMs: 100 };
+      workerResponse = FAST_BENCHMARK_RESPONSE;
 
       const first = WasmRuntimeProbe.check();
       const second = WasmRuntimeProbe.check();
 
       expect(first).toBe(second);
       await first;
-      expect(workerConstructCount).toBe(1);
+      expect(workerConstructionCount).toBe(1);
     });
   });
 });

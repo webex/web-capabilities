@@ -1,24 +1,25 @@
 /*
- * wasm-runtime-probe.worker.js — measures how long the same loop takes in WASM vs JS, off the main thread.
+ * WASM runtime benchmark worker. Inlined into wasm-runtime-probe.ts via Blob URL.
  *
- * Inlined as a string at build time and started from a Blob URL by wasm-runtime-probe.ts;
- * kept as a real file so it stays readable.
+ * Times add, divide, and square root WASM loops. Each operation uses the previous
+ * result so the browser cannot run several operations at once. The main thread
+ * compares divide/add and square root/add ratios so CPU speed mostly cancels out.
  *
- * Protocol: main thread posts 'start'; replies { ok: true, wasmMs, jsMs } or { ok: false }.
+ * Counterintuitive: HIGH ratio means JIT OK. LOW near 2 means interpreted WASM.
+ * Thresholds live in wasm-runtime-probe.ts. Do not invert ratios when classifying.
+ *
+ * postMessage('start') returns medians or { ok: false }.
  */
 self.onmessage = function onProbeStart() {
   try {
-    // Standard LCG constants (Numerical Recipes): acc = acc * MULT + INC is a cheap
-    // arithmetic loop the JIT can't optimize away, so it's a fair CPU benchmark. The
-    // WASM and JS loops share them so both do identical work; changing them
-    // invalidates the calibrated threshold.
-    var LCG_MULT = 1664525; // multiplier
-    var LCG_INC = 1013904223; // increment
-    var ITERATIONS = 5000000;
-    var SAMPLE_RUNS = 7; // keep the median of this many runs
+    // Each function runs 1 million loops with 16 operations per loop.
+    var OPERATIONS_PER_LOOP = 16;
+    var LOOPS = 1000000;
+    var OPS = LOOPS * OPERATIONS_PER_LOOP;
+    var TRIALS = 5;
+    var WARMUP_LOOPS = 200000;
 
-    // Build a tiny WASM module in memory that exports bench(n) — nothing to fetch.
-    // Bytes use LEB128: encodeU32 for lengths/counts, encodeI32 for signed values.
+    // Build the WASM binary in memory so the probe does not need a separate file.
     var encodeU32 = function encodeU32(value) {
       var out = [];
       do {
@@ -30,87 +31,113 @@ self.onmessage = function onProbeStart() {
       return out;
     };
 
-    var encodeI32 = function encodeI32(value) {
-      var out = [];
-      var more = true;
-      while (more) {
-        var byte = value & 0x7f;
-        value >>= 7;
-        if ((value === 0 && !(byte & 0x40)) || (value === -1 && byte & 0x40)) {
-          more = false;
-        } else {
-          byte |= 0x80;
-        }
-        out.push(byte);
-      }
-      return out;
-    };
-
-    // A section is one labelled block of the file: [id, length, ...bytes].
     var section = function section(id, bytes) {
       return [id].concat(encodeU32(bytes.length)).concat(bytes);
     };
 
-    var I32 = 0x7f; // WASM's code for the 32-bit integer type.
-
-    var buildWasmLoopModule = function buildWasmLoopModule() {
-      var typeSec = section(1, encodeU32(1).concat([0x60, 0x01, I32, 0x01, I32])); // bench's type: takes one i32, returns one i32
-      var funcSec = section(3, encodeU32(1).concat([0x00])); // function 0 uses signature 0
-      var name = 'bench'.split('').map(function toCharCode(c) {
+    var toCharCodes = function toCharCodes(str) {
+      return str.split('').map(function charCode(c) {
         return c.charCodeAt(0);
       });
-      var exportSec = section(
-        7,
-        encodeU32(1).concat(encodeU32(name.length)).concat(name).concat([0x00, 0x00])
-      ); // export the function as "bench"
-      // Function body — 2 locals (i, acc), then the loop:
-      //   acc = acc * LCG_MULT + LCG_INC;  i += 1;  if (i < n) loop;  return acc
-      var body = encodeU32(1)
-        .concat(encodeU32(2))
-        .concat([I32, 0x03, 0x40, 0x20, 0x02, 0x41])
-        .concat(encodeI32(LCG_MULT))
-        .concat([0x6c, 0x41])
-        .concat(encodeI32(LCG_INC))
-        .concat([
-          0x6a, 0x21, 0x02, 0x20, 0x01, 0x41, 0x01, 0x6a, 0x22, 0x01, 0x20, 0x00, 0x48, 0x0d, 0x00,
-          0x0b, 0x20, 0x02, 0x0b,
-        ]);
-      var codeSec = section(10, encodeU32(1).concat(encodeU32(body.length)).concat(body));
-      // "\0asm" + version 1 + the four sections
-      return new Uint8Array(
-        [0, 0x61, 0x73, 0x6d, 1, 0, 0, 0].concat(typeSec, funcSec, exportSec, codeSec)
-      );
     };
 
-    // Median of several runs, so one slow run (e.g. a background hiccup) is ignored.
-    var medianRuntimeMs = function medianRuntimeMs(loopFn) {
-      loopFn(ITERATIONS); // warm-up run (not timed)
-      var samples = [];
-      for (var k = 0; k < SAMPLE_RUNS; k++) {
-        var start = performance.now();
-        loopFn(ITERATIONS);
-        samples.push(performance.now() - start);
+    var exportEntry = function exportEntry(name, funcIndex) {
+      var chars = toCharCodes(name);
+      return encodeU32(chars.length).concat(chars).concat([0x00, funcIndex]);
+    };
+
+    var I32 = 0x7f;
+    var F64 = 0x7c;
+
+    // Define three exported functions. Add and divide return i32, while square root returns f64.
+    var typeSec = section(
+      1,
+      encodeU32(2)
+        .concat([0x60, 0x01, I32, 0x01, I32])
+        .concat([0x60, 0x01, I32, 0x01, F64])
+    );
+    var funcSec = section(3, encodeU32(3).concat([0x00, 0x00, 0x01]));
+    var exportSec = section(
+      7,
+      encodeU32(3)
+        .concat(exportEntry('add', 0))
+        .concat(exportEntry('div', 1))
+        .concat(exportEntry('sqrt', 2))
+    );
+
+    // Build an integer loop where each result becomes the input to the next operation.
+    var buildIntBody = function buildIntBody(opcode) {
+      var body = [1, 3, I32].concat([0x03, 0x40]);
+      body = body.concat([0x20, 0x01, 0x41, 0x01, 0x72, 0x21, 0x03]);
+      for (var k = 0; k < OPERATIONS_PER_LOOP; k++) {
+        body = body.concat([0x20, 0x02, 0x20, 0x03, opcode, 0x21, 0x02]);
       }
-      samples.sort(function ascending(a, b) {
+      body = body.concat([0x20, 0x01, 0x41, 0x01, 0x6a, 0x22, 0x01, 0x20, 0x00, 0x48, 0x0d, 0x00]);
+      body = body.concat([0x0b, 0x20, 0x02, 0x0b]);
+      return encodeU32(body.length).concat(body);
+    };
+    // These WASM opcodes select i32.add and unsigned i32.div.
+    var addCode = buildIntBody(0x6a);
+    var divCode = buildIntBody(0x6e);
+
+    // Build the same dependency pattern for floating-point square root.
+    var buildSqrtBody = function buildSqrtBody() {
+      var body = [2, 1, I32, 1, F64].concat([0x03, 0x40]);
+      for (var k = 0; k < OPERATIONS_PER_LOOP; k++) {
+        body = body.concat([0x20, 0x02, 0x20, 0x01, 0x41, 0x01, 0x72, 0xb8, 0xa0, 0x9f, 0x21, 0x02]);
+      }
+      body = body.concat([0x20, 0x01, 0x41, 0x01, 0x6a, 0x22, 0x01, 0x20, 0x00, 0x48, 0x0d, 0x00]);
+      body = body.concat([0x0b, 0x20, 0x02, 0x0b]);
+      return encodeU32(body.length).concat(body);
+    };
+    var sqrtCode = buildSqrtBody();
+
+    // Assemble and compile the module once before any timed trials.
+    var codeSec = section(10, encodeU32(3).concat(addCode).concat(divCode).concat(sqrtCode));
+    var bytes = new Uint8Array(
+      [0, 0x61, 0x73, 0x6d, 1, 0, 0, 0].concat(typeSec, funcSec, exportSec, codeSec)
+    );
+    var exports = new WebAssembly.Instance(new WebAssembly.Module(bytes)).exports;
+
+    // Median reduces the effect of one unusually slow trial.
+    var median = function median(samples) {
+      var sorted = samples.slice().sort(function ascending(a, b) {
         return a - b;
       });
-      return samples[Math.floor(samples.length / 2)];
+      return sorted[Math.floor(sorted.length / 2)];
     };
 
-    var runWasmLoop = new WebAssembly.Instance(
-      new WebAssembly.Module(buildWasmLoopModule())
-    ).exports.bench;
-    var runJsLoop = function runJsLoop(n) {
-      var acc = 0;
-      for (var k = 0; k < n; k++) {
-        acc = (Math.imul(acc, LCG_MULT) + LCG_INC) | 0;
-      }
-      return acc;
-    };
+    // Run each function before timing so the browser can compile it.
+    exports.add(WARMUP_LOOPS);
+    exports.div(WARMUP_LOOPS);
+    exports.sqrt(WARMUP_LOOPS);
+    exports.add(WARMUP_LOOPS);
+    exports.div(WARMUP_LOOPS);
+    exports.sqrt(WARMUP_LOOPS);
 
-    var wasmMs = medianRuntimeMs(runWasmLoop);
-    var jsMs = medianRuntimeMs(runJsLoop);
-    self.postMessage({ ok: true, wasmMs: wasmMs, jsMs: jsMs });
+    // Alternate operations so temporary system load affects them similarly.
+    var addMs = [];
+    var divMs = [];
+    var sqrtMs = [];
+    for (var t = 0; t < TRIALS; t++) {
+      var a0 = performance.now();
+      exports.add(LOOPS);
+      addMs.push(performance.now() - a0);
+      var d0 = performance.now();
+      exports.div(LOOPS);
+      divMs.push(performance.now() - d0);
+      var s0 = performance.now();
+      exports.sqrt(LOOPS);
+      sqrtMs.push(performance.now() - s0);
+    }
+
+    self.postMessage({
+      ok: true,
+      ops: OPS,
+      addMedianMs: median(addMs),
+      divMedianMs: median(divMs),
+      sqrtMedianMs: median(sqrtMs),
+    });
   } catch (err) {
     self.postMessage({ ok: false });
   }

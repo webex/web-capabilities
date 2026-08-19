@@ -1,12 +1,59 @@
 import { CapabilityState, WebCapabilities } from './web-capabilities';
 import WORKER_SRC from './wasm-runtime-probe.worker';
 
-/** Possible results of the WASM runtime probe. */
+/** Outcome of {@link WasmRuntimeProbe.check}. */
 export enum WasmRuntimeStatus {
+  /** WASM runs at full JIT speed. */
   OK = 'ok',
+  /** WASM runs through a slow interpreter (too slow for real-time effects). */
   SLOW = 'slow',
+  /** WASM missing or will not compile. */
   DISABLED = 'disabled',
+  /** Measurements do not clearly classify WASM as fast or slow. */
+  UNCERTAIN = 'uncertain',
+  /** Probe could not complete or validate a measurement. */
   UNKNOWN = 'unknown',
+}
+
+/** Reasons a probe returns {@link WasmRuntimeStatus.UNKNOWN}. */
+export enum WasmRuntimeUnknownReason {
+  WORKER_UNAVAILABLE = 'worker_unavailable',
+  WORKER_START_FAILED = 'worker_start_failed',
+  WORKER_TIMEOUT = 'worker_timeout',
+  WORKER_RUNTIME_ERROR = 'worker_runtime_error',
+  WORKER_BENCHMARK_FAILED = 'worker_benchmark_failed',
+  INVALID_MEASUREMENT = 'invalid_measurement',
+  /** Page was hidden during the benchmark, which can distort its timing. */
+  BACKGROUND_TAB = 'background_tab',
+  /** Divide benchmark finished too quickly to classify the runtime. */
+  DIV_TIMING_TOO_SHORT = 'div_timing_too_short',
+}
+
+/** Reasons a probe returns {@link WasmRuntimeStatus.UNCERTAIN}. */
+export enum WasmRuntimeUncertainReason {
+  /** Divide or sqrt ratio indicates fast WASM, but add cost indicates slow WASM. */
+  FAST_RATIO_SLOW_ADD = 'fast_ratio_slow_add',
+  /** Ratios are neither clearly fast nor clearly slow. */
+  RATIOS_BETWEEN_THRESHOLDS = 'ratios_between_thresholds',
+}
+
+/** Additional context for an unknown or uncertain result. */
+export type WasmRuntimeReason = WasmRuntimeUnknownReason | WasmRuntimeUncertainReason;
+
+/** Measurements produced by a completed benchmark. */
+export interface WasmRuntimeMeasurements {
+  /** Divide time relative to add time. */
+  divRatio: number;
+  /** Square root time relative to add time. */
+  sqrtRatio: number;
+  /** Time for one add operation in nanoseconds. */
+  addNsPerOp: number;
+  /** Typical add benchmark time in milliseconds. */
+  addMedianMs: number;
+  /** Typical divide benchmark time in milliseconds. */
+  divMedianMs: number;
+  /** Typical square root benchmark time in milliseconds. */
+  sqrtMedianMs: number;
 }
 
 /**
@@ -15,19 +62,32 @@ export enum WasmRuntimeStatus {
  * slow interpreter.
  */
 export interface WasmRuntimeResult {
+  /** See {@link WasmRuntimeStatus}. */
   status: WasmRuntimeStatus;
+  /** Product capability derived from {@link status}. */
   capability: CapabilityState;
-  ratio: number | null; // wasmMs / jsMs, kept raw so the cutoff can be tuned later
-  wasmMs: number | null;
-  jsMs: number | null;
+  /** Additional context for an unknown or uncertain status. */
+  reason: WasmRuntimeReason | null;
+  /** Benchmark measurements when useful data was produced. */
+  measurements: WasmRuntimeMeasurements | null;
 }
 
-// Calibrated cutoff for the wasm/js ratio.
-const SLOW_RATIO_THRESHOLD = 0.6;
-const WORKER_TIMEOUT_MS = 3000;
+/** Divide ratio at or above this value indicates fast WASM. */
+const DIV_FAST_RATIO = 4.0;
+/** Divide ratio at or below this value indicates slow WASM. */
+const DIV_SLOW_RATIO = 3.0;
+/** Square root ratio at or above this value provides another fast WASM signal. */
+const SQRT_FAST_RATIO = 8.0;
+/** Add time per operation above this value indicates slow WASM unless a fast ratio disagrees. */
+const SLOW_ADD_NS_PER_OP_THRESHOLD = 1.2;
+/** Divide samples below this duration are too short to classify. */
+const MIN_DIV_MEDIAN_MS = 8;
+/** Maximum time allowed for the worker benchmark to finish. */
+const WORKER_TIMEOUT_MS = 5000;
 
 /**
- * Maps a probe status to a CAPABLE/NOT_CAPABLE verdict.
+ * Maps probe status to capability. Uncertain stays unknown capability so we do not
+ * false-block effects.
  *
  * @param status - The probe {@link WasmRuntimeStatus}.
  * @returns The corresponding {@link CapabilityState}.
@@ -44,29 +104,46 @@ const statusToCapability = (status: WasmRuntimeStatus): CapabilityState => {
   }
 };
 
-interface WorkerReply {
+interface WorkerResponse {
   ok: boolean;
-  wasmMs?: number;
-  jsMs?: number;
+  ops?: number;
+  addMedianMs?: number;
+  divMedianMs?: number;
+  sqrtMedianMs?: number;
 }
 
 /**
- * Checks whether this browser runs WebAssembly at full (JIT) speed or through a
- * slow interpreter, by timing the same loop in WASM vs JS. This catches the case
- * where WASM is present but too slow for real-time effects (e.g. Edge with JIT
- * turned off). The quick "disabled" check is instant; the timed benchmark runs
- * off the main thread. The result is cached, so it runs at most once per page.
+ * Checks that a worker response contains complete, usable measurements.
+ *
+ * @param response - Worker response to validate.
+ * @returns Whether every measurement is finite and positive.
+ */
+const hasValidMeasurements = (response: WorkerResponse): response is Required<WorkerResponse> =>
+  [response.ops, response.addMedianMs, response.divMedianMs, response.sqrtMedianMs].every(
+    (value) => typeof value === 'number' && Number.isFinite(value) && value > 0
+  );
+
+type WorkerResponseOutcome =
+  | { type: 'response'; response: WorkerResponse }
+  | {
+      type: 'no_response';
+      reason:
+        | WasmRuntimeUnknownReason.WORKER_TIMEOUT
+        | WasmRuntimeUnknownReason.WORKER_RUNTIME_ERROR;
+    };
+
+/**
+ * Tells whether WASM is fast enough for real-time effects (for example BNR on Edge
+ * when JIT is off). Runs a quick WASM disabled check, then a Worker benchmark.
+ * Cached once per page load.
  */
 export class WasmRuntimeProbe {
   private static cachedResult?: Promise<WasmRuntimeResult>;
 
   /**
-   * Runs the probe (cached per page) and resolves with the classified result.
-   *
-   * Times the same loop in WASM and JS off the main thread and compares them as a
-   * ratio (wasmMs / jsMs), which normalizes for the user's CPU. When the engine
-   * isn't running at full JIT speed the ratio drops below a calibrated threshold,
-   * and the probe reports {@link WasmRuntimeStatus.SLOW}.
+   * Runs the probe once per page (cached). The Worker times add, div, and sqrt in
+   * WASM and the main thread compares ratios. Slow interpreter engines collapse both
+   * ratios near 2 and status becomes {@link WasmRuntimeStatus.SLOW}.
    *
    * @returns A promise that resolves with the {@link WasmRuntimeResult}.
    */
@@ -78,86 +155,87 @@ export class WasmRuntimeProbe {
   }
 
   /**
-   * Builds a {@link WasmRuntimeResult} from a status and optional raw measurements.
+   * Derives capability while keeping result construction in one place.
    *
-   * @param status - The classified {@link WasmRuntimeStatus}.
-   * @param extra - Optional raw measurements to include.
-   * @param extra.ratio - The wasmMs / jsMs ratio.
-   * @param extra.wasmMs - The measured WASM time in milliseconds.
-   * @param extra.jsMs - The measured JS time in milliseconds.
-   * @returns The assembled {@link WasmRuntimeResult}.
+   * @param status - Classified status.
+   * @param reason - Additional result context.
+   * @param measurements - Useful benchmark measurements.
+   * @returns Assembled {@link WasmRuntimeResult}.
    */
   private static buildResult(
     status: WasmRuntimeStatus,
-    extra?: { ratio?: number; wasmMs?: number; jsMs?: number }
+    reason: WasmRuntimeReason | null = null,
+    measurements: WasmRuntimeMeasurements | null = null
   ): WasmRuntimeResult {
     return {
       status,
       capability: statusToCapability(status),
-      ratio: extra?.ratio ?? null,
-      wasmMs: extra?.wasmMs ?? null,
-      jsMs: extra?.jsMs ?? null,
+      reason,
+      measurements,
     };
   }
 
   /**
-   * Runs the checks in order: the instant "disabled" check, then the timed Worker benchmark.
+   * WASM support check, then Worker benchmark with timeout and cleanup.
    *
-   * @returns A promise that resolves with the {@link WasmRuntimeResult}.
+   * @returns Classified probe result.
    */
   private static async run(): Promise<WasmRuntimeResult> {
     if (WebCapabilities.supportsWasm() === CapabilityState.NOT_CAPABLE) {
       return this.buildResult(WasmRuntimeStatus.DISABLED);
     }
 
-    // Can't run the benchmark without a Web Worker and a Blob URL.
     if (
       WebCapabilities.supportsWorker() === CapabilityState.NOT_CAPABLE ||
       typeof URL === 'undefined' ||
       !URL.createObjectURL
     ) {
-      return this.buildResult(WasmRuntimeStatus.UNKNOWN);
+      return this.buildResult(
+        WasmRuntimeStatus.UNKNOWN,
+        WasmRuntimeUnknownReason.WORKER_UNAVAILABLE
+      );
     }
 
     const started = this.startWorker();
     if (!started) {
-      return this.buildResult(WasmRuntimeStatus.UNKNOWN);
+      return this.buildResult(
+        WasmRuntimeStatus.UNKNOWN,
+        WasmRuntimeUnknownReason.WORKER_START_FAILED
+      );
     }
 
     const { worker, url } = started;
     try {
-      // eslint-disable-next-line jsdoc/require-jsdoc
-      const msg = await new Promise<WorkerReply>((resolve) => {
-        const timer = setTimeout(() => resolve({ ok: false }), WORKER_TIMEOUT_MS);
+      const outcome = await new Promise<WorkerResponseOutcome>((resolve) => {
+        const timer = setTimeout(
+          () =>
+            resolve({
+              type: 'no_response',
+              reason: WasmRuntimeUnknownReason.WORKER_TIMEOUT,
+            }),
+          WORKER_TIMEOUT_MS
+        );
         // eslint-disable-next-line jsdoc/require-jsdoc
-        worker.onmessage = (e: MessageEvent<WorkerReply>) => {
+        worker.onmessage = (event: MessageEvent<WorkerResponse>) => {
           clearTimeout(timer);
-          resolve(e.data);
+          resolve({ type: 'response', response: event.data });
         };
         // eslint-disable-next-line jsdoc/require-jsdoc
         worker.onerror = () => {
           clearTimeout(timer);
-          resolve({ ok: false });
+          resolve({
+            type: 'no_response',
+            reason: WasmRuntimeUnknownReason.WORKER_RUNTIME_ERROR,
+          });
         };
         worker.postMessage('start');
       });
 
-      if (
-        !msg.ok ||
-        typeof msg.jsMs !== 'number' ||
-        msg.jsMs <= 0 ||
-        typeof msg.wasmMs !== 'number'
-      ) {
-        return this.buildResult(WasmRuntimeStatus.UNKNOWN);
+      if (outcome.type === 'no_response') {
+        return this.buildResult(WasmRuntimeStatus.UNKNOWN, outcome.reason);
       }
 
-      const ratio = Number((msg.wasmMs / msg.jsMs).toFixed(2));
-      const status = ratio < SLOW_RATIO_THRESHOLD ? WasmRuntimeStatus.SLOW : WasmRuntimeStatus.OK;
-      return this.buildResult(status, {
-        ratio,
-        wasmMs: Number(msg.wasmMs.toFixed(2)),
-        jsMs: Number(msg.jsMs.toFixed(2)),
-      });
+      return this.classify(outcome.response);
     } finally {
       worker.terminate();
       URL.revokeObjectURL(url);
@@ -165,9 +243,76 @@ export class WasmRuntimeProbe {
   }
 
   /**
-   * Starts the benchmark worker from the inline source (via a Blob URL).
+   * Turns worker medians into status and metrics. High div or sqrt ratio means fast
+   * WASM unless absolute add cost disagrees ({@link WasmRuntimeStatus.UNCERTAIN}).
    *
-   * @returns The worker and its Blob URL, or undefined if creation fails.
+   * @param response - Raw worker response.
+   * @returns Classified result with rounded metrics.
+   */
+  private static classify(response: WorkerResponse): WasmRuntimeResult {
+    if (!response.ok) {
+      return this.buildResult(
+        WasmRuntimeStatus.UNKNOWN,
+        WasmRuntimeUnknownReason.WORKER_BENCHMARK_FAILED
+      );
+    }
+
+    if (!hasValidMeasurements(response)) {
+      return this.buildResult(
+        WasmRuntimeStatus.UNKNOWN,
+        WasmRuntimeUnknownReason.INVALID_MEASUREMENT
+      );
+    }
+
+    const { addMedianMs, divMedianMs, sqrtMedianMs } = response;
+    // eslint-disable-next-line jsdoc/require-jsdoc
+    const roundToThreeDecimals = (value: number): number => Number(value.toFixed(3));
+
+    const divRatio = divMedianMs / addMedianMs;
+    const sqrtRatio = sqrtMedianMs / addMedianMs;
+    const addNsPerOp = (addMedianMs * 1_000_000) / response.ops;
+
+    // CPUs can handle divide and square root differently, so either fast ratio is enough.
+    const hasFastRatio = divRatio >= DIV_FAST_RATIO || sqrtRatio >= SQRT_FAST_RATIO;
+    const hasSlowDivRatio = divRatio <= DIV_SLOW_RATIO;
+    const isAddTimingSlow = addNsPerOp > SLOW_ADD_NS_PER_OP_THRESHOLD;
+    const hasSufficientDivTiming = divMedianMs >= MIN_DIV_MEDIAN_MS;
+    const isPageHidden = typeof document !== 'undefined' && document.visibilityState === 'hidden';
+
+    let status: WasmRuntimeStatus;
+    let reason: WasmRuntimeReason | null = null;
+    if (isPageHidden) {
+      status = WasmRuntimeStatus.UNKNOWN;
+      reason = WasmRuntimeUnknownReason.BACKGROUND_TAB;
+    } else if (!hasSufficientDivTiming) {
+      status = WasmRuntimeStatus.UNKNOWN;
+      reason = WasmRuntimeUnknownReason.DIV_TIMING_TOO_SHORT;
+    } else if (hasFastRatio && isAddTimingSlow) {
+      status = WasmRuntimeStatus.UNCERTAIN;
+      reason = WasmRuntimeUncertainReason.FAST_RATIO_SLOW_ADD;
+    } else if (hasFastRatio) {
+      status = WasmRuntimeStatus.OK;
+    } else if (hasSlowDivRatio || isAddTimingSlow) {
+      status = WasmRuntimeStatus.SLOW;
+    } else {
+      status = WasmRuntimeStatus.UNCERTAIN;
+      reason = WasmRuntimeUncertainReason.RATIOS_BETWEEN_THRESHOLDS;
+    }
+
+    return this.buildResult(status, reason, {
+      divRatio: roundToThreeDecimals(divRatio),
+      sqrtRatio: roundToThreeDecimals(sqrtRatio),
+      addNsPerOp: roundToThreeDecimals(addNsPerOp),
+      addMedianMs: roundToThreeDecimals(addMedianMs),
+      divMedianMs: roundToThreeDecimals(divMedianMs),
+      sqrtMedianMs: roundToThreeDecimals(sqrtMedianMs),
+    });
+  }
+
+  /**
+   * Creates a Worker from the inlined benchmark source.
+   *
+   * @returns Worker plus Blob URL, or undefined if creation fails.
    */
   private static startWorker(): { worker: Worker; url: string } | undefined {
     let url: string | undefined;
