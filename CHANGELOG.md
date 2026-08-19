@@ -1,3 +1,10 @@
+# [1.13.0](https://github.com/webex/web-capabilities/compare/v1.12.0...v1.13.0) (2026-08-19)
+
+
+### Features
+
+* update WASM runtime probe  ([#21](https://github.com/webex/web-capabilities/issues/21)) ([52e7571](https://github.com/webex/web-capabilities/commit/52e7571e1fe33f7f24c3d2d491859c613d98f070))
+
 # [1.12.0](https://github.com/webex/web-capabilities/compare/v1.11.0...v1.12.0) (2026-07-22)
 
 
