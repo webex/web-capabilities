@@ -32,10 +32,15 @@ import { CpuInfo } from '@webex/web-capabilities';
 const logicalCores = CpuInfo.getNumLogicalCores();
 
 if (logicalCores) {
-    console.log(`Number of logical CPU cores: ${logicalCores}`);
+  console.log(`Number of logical CPU cores: ${logicalCores}`);
 }
 ```
 
+## Contributing and AI-assisted development
+
+- Read [AGENTS.md](AGENTS.md) for setup, verified commands, coding conventions, testing boundaries, and AI-agent guidance.
+- Follow [docs/contributing/GIT_CONVENTIONS.md](docs/contributing/GIT_CONVENTIONS.md) for branch and commit conventions.
+- Start with the [knowledge base](docs/knowledge-base/README.md) for capability detection, WASM probing, package, and release architecture.
 
 # Setup
 
