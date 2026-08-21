@@ -10,4 +10,8 @@ jobs:
           node-version: 22
       - run: yarn install
       - run: yarn test:lint
+      - run: yarn test:prettier
+      - run: yarn test:spelling
+      - run: yarn transpile:validate
+      - run: yarn build
       - run: yarn test:coverage
