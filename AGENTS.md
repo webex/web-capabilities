@@ -6,7 +6,7 @@
 
 Most checks run synchronously from browser APIs and hardware signals. `WasmRuntimeProbe` adds an optional async check when callers need to know whether WebAssembly runs fast enough, not just whether it is present.
 
-Start with [README.md](README.md) for usage and [docs/knowledge-base/README.md](docs/knowledge-base/README.md) for a short architecture summary, build outputs, testing, and release behavior.
+Use [README.md](README.md) for package usage and [docs/knowledge-base/README.md](docs/knowledge-base/README.md) for architecture, build outputs, testing, and release behavior.
 
 ## General Guidelines
 

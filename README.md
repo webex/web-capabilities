@@ -38,7 +38,7 @@ if (logicalCores) {
 
 ## Contributing and AI-assisted development
 
-- Read [AGENTS.md](AGENTS.md) for setup, verified commands, coding conventions, testing boundaries, and AI-agent guidance.
+- Repository guidance for coding agents is in [AGENTS.md](AGENTS.md).
 - Follow [docs/contributing/GIT_CONVENTIONS.md](docs/contributing/GIT_CONVENTIONS.md) for branch and commit conventions.
 - Start with the [knowledge base](docs/knowledge-base/README.md) for capability detection, WASM probing, package, and release architecture.
 
