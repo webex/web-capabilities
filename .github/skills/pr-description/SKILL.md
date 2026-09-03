@@ -34,7 +34,7 @@ Repository files and observed results are authoritative. Do not invent motivatio
 - Under `Description`, start with two to four short bullets that explain the developer or user outcome.
 - Lead with why the change is useful, then explain what changed to achieve it.
 - Use plain language, active voice, and short sentences. Explain an unavoidable technical term the first time it appears.
-- Prefer outcomes such as “documentation commands cannot remove contributor guides” over implementation phrases such as “isolate generated output.”
+- Prefer outcomes such as “maintained contributor guides are included in formatting and spell checks” over implementation phrases such as “isolate generated output.”
 - Describe behavior and developer outcomes instead of listing changed files or repeating the diff.
 - Include implementation details only when they help a reviewer evaluate correctness or compatibility.
 - State important non-effects directly, such as “This does not change runtime behavior or the public API.”
@@ -53,11 +53,11 @@ Repository files and observed results are authoritative. Do not invent motivatio
 
 Avoid:
 
-> Preserve maintained documentation by isolating generated TypeDoc output and extend validation coverage.
+> Preserve maintained documentation by extending formatting and spell-check coverage without changing runtime behavior.
 
 Prefer:
 
-> Keep generated API documentation separate from contributor guides so documentation commands cannot remove maintained content. Include the new guides in formatting and spell checks.
+> Include the new guides in formatting and spell checks. This does not change runtime behavior or the public API.
 
 For capability or probe changes, prefer:
 

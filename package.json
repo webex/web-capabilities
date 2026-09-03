@@ -14,7 +14,6 @@
     "build": "run-s clean compile",
     "clean": "yarn transpile:clean",
     "compile": "rollup -c ./rollup.config.js",
-    "docs": "rimraf ./docs/api && typedoc",
     "fix": "run-s fix:*",
     "fix:prettier": "prettier --write \"src/**/*.ts\" \"docs/**/*.md\" \"AGENTS.md\" \"README.md\" \".github/**/*.md\"",
     "fix:lint": "eslint src --ext .ts --fix",
@@ -53,6 +52,10 @@
       "prettier --write",
       "eslint --max-warnings=0",
       "cspell"
+    ],
+    "{docs/**/*.md,AGENTS.md,README.md,.github/**/*.md}": [
+      "prettier --write",
+      "cspell"
     ]
   },
   "devDependencies": {
@@ -87,7 +90,6 @@
     "rollup-plugin-typescript2": "^0.31.1",
     "semantic-release": "^19.0.2",
     "ts-jest": "^27.1.2",
-    "typedoc": "^0.22.10",
     "typescript": "^4.5.4"
   },
   "dependencies": {

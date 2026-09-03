@@ -4,7 +4,7 @@
 
 `@webex/web-capabilities` is a small browser-side library with helpers for browser or system information and for estimating whether certain features are likely to work in the current environment.
 
-Consumers read the public exports from `src/index.ts`. This page summarizes the main areas of the package. Method-level detail belongs in source, tests, and generated API docs under `docs/api/`.
+Consumers read the public exports from `src/index.ts`. This page summarizes the main areas of the package. Method-level detail belongs in source, tests, and the published `dist/types` declarations.
 
 ## Main areas
 
@@ -29,11 +29,13 @@ flowchart LR
 
 ## CapabilityState
 
-All capability helpers return `CapabilityState`:
+`WebCapabilities` exposes only static methods. Each one returns `CapabilityState`:
 
 - `CAPABLE` — enough signal that the requirement is met
 - `NOT_CAPABLE` — enough signal that it is not met
 - `UNKNOWN` — not enough information to decide
+
+`WasmRuntimeProbe.check()` returns `WasmRuntimeResult`, which includes a `capability` field in the same enum.
 
 These are library outcomes. Callers decide how to use them in product logic.
 
@@ -68,7 +70,6 @@ Classification uses timing ratios and fixed thresholds. Order of checks, visibil
 
 - Rollup publishes ESM, CommonJS, and TypeScript declarations from `src/index.ts`.
 - Jest runs in jsdom; worker source uses a raw transform in tests.
-- TypeDoc output goes to `docs/api/` and must not overwrite `docs/knowledge-base/` or `docs/contributing/`.
 - Pull-request CI runs lint, Prettier, spelling, TypeScript validation, build, and coverage. Release on `main` builds and runs semantic-release.
 
 Runtime dependency: `bowser` only.

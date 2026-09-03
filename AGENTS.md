@@ -32,7 +32,7 @@ Use [README.md](README.md) for package usage and [docs/knowledge-base/README.md]
 
 ### Knowledge base
 
-The curated knowledge base under `docs/knowledge-base/` is maintained separately from generated API documentation under `docs/api/`.
+The curated knowledge base under `docs/knowledge-base/` documents architecture and delivery behavior for maintainers and agents.
 
 - Read it for capability aggregation, browser and system inputs, WASM probing, worker lifecycle, public exports, and delivery behavior.
 - Verify implementation details against source, tests, package metadata, and configuration.
@@ -54,7 +54,8 @@ The curated knowledge base under `docs/knowledge-base/` is maintained separately
 | `rollup.config.js`                 | ESM, CommonJS, and declaration builds; embeds worker source at build time |
 | `.github/workflows/`               | Pull-request checks and main-branch publishing                            |
 | `docs/knowledge-base/`             | Maintained architecture guidance                                          |
-| `docs/api/`                        | Generated TypeDoc output (gitignored locally; published on release)       |
+| `docs/contributing/`               | Branch and commit conventions                                             |
+| `dist/types/`                      | Published TypeScript declarations consumed from npm                       |
 
 ## Setup
 
@@ -71,18 +72,17 @@ Do not use npm for dependency installation. `package.json` sets `engines.npm` to
 
 Run commands from the repository root.
 
-| Command                   | Purpose                                                                             |
-| ------------------------- | ----------------------------------------------------------------------------------- |
-| `yarn build`              | Clean generated output and build ESM, CommonJS, and declaration artifacts           |
-| `yarn watch`              | Run the Rollup build in watch mode                                                  |
-| `yarn transpile:validate` | Type-check with TypeScript without emitting files                                   |
-| `yarn test:unit`          | Run Jest unit tests                                                                 |
-| `yarn test:coverage`      | Run Jest with coverage                                                              |
-| `yarn test:lint`          | Run ESLint on TypeScript source                                                     |
-| `yarn test:prettier`      | Check source and maintained Markdown formatting                                     |
-| `yarn test:spelling`      | Spellcheck maintained source and documentation                                      |
-| `yarn docs`               | Replace generated TypeDoc output under `docs/api/` while preserving maintained docs |
-| `yarn fix`                | Apply configured Prettier and ESLint fixes                                          |
+| Command                   | Purpose                                                                   |
+| ------------------------- | ------------------------------------------------------------------------- |
+| `yarn build`              | Clean generated output and build ESM, CommonJS, and declaration artifacts |
+| `yarn watch`              | Run the Rollup build in watch mode                                        |
+| `yarn transpile:validate` | Type-check with TypeScript without emitting files                         |
+| `yarn test:unit`          | Run Jest unit tests                                                       |
+| `yarn test:coverage`      | Run Jest with coverage                                                    |
+| `yarn test:lint`          | Run ESLint on TypeScript source                                           |
+| `yarn test:prettier`      | Check source and maintained Markdown formatting                           |
+| `yarn test:spelling`      | Spellcheck maintained source and documentation                            |
+| `yarn fix`                | Apply configured Prettier and ESLint fixes                                |
 
 `yarn test` runs the build and every `test:*` script. Run `yarn transpile:validate` separately because the aggregate script does not include it.
 
@@ -146,7 +146,7 @@ Path-scoped detail lives in [.github/instructions/code-review.instructions.md](.
 ## CI/CD
 
 - Pull requests install with Yarn, then run `yarn test:lint`, `yarn test:prettier`, `yarn test:spelling`, `yarn transpile:validate`, `yarn build`, and `yarn test:coverage` in GitHub Actions.
-- Docs generation and the aggregate `yarn test` command are not current pull-request gates.
+- The aggregate `yarn test` command does not include `yarn transpile:validate`.
 - Pushes to `main` install dependencies, run `yarn build`, and invoke semantic-release.
 - semantic-release analyzes Conventional Commits, publishes the public npm package, updates the changelog and package metadata, and commits configured release assets.
 - Do not run semantic-release or publish locally unless the user explicitly requests a coordinated release.
