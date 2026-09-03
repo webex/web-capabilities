@@ -43,9 +43,22 @@ interface PressureObserver {
   takeRecords(): PressureRecord[];
 }
 
+interface PressureObserverConstructor {
+  new (callback: (records: PressureRecord[]) => void): PressureObserver;
+}
+
+interface PermissionsPolicyLike {
+  allowsFeature(feature: string): boolean;
+}
+
+interface DocumentWithPermissionsPolicy extends Document {
+  permissionsPolicy?: PermissionsPolicyLike;
+  featurePolicy?: PermissionsPolicyLike;
+}
+
 declare global {
   interface Window {
-    PressureObserver?: PressureObserver;
+    PressureObserver?: PressureObserverConstructor;
   }
 }
 
@@ -68,13 +81,22 @@ class PressureObserverHelper extends EventEmitter {
   constructor() {
     super();
 
-    if (PressureObserverHelper.isPressureObserverSupported()) {
-      // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-      // @ts-ignore
-      this.observer = new PressureObserver(this.handleStateChange.bind(this));
-      if (this.observer) {
-        this.observer.observe('cpu');
-      }
+    const PressureObserverConstructor = window.PressureObserver;
+
+    if (!PressureObserverConstructor || !PressureObserverHelper.isComputePressureAllowed()) {
+      return;
+    }
+
+    try {
+      const observer = new PressureObserverConstructor(this.handleStateChange.bind(this));
+      this.observer = observer;
+      observer.observe('cpu').catch(() => {
+        if (this.observer === observer) {
+          this.observer = undefined;
+        }
+      });
+    } catch {
+      this.observer = undefined;
     }
   }
 
@@ -108,7 +130,27 @@ class PressureObserverHelper extends EventEmitter {
    * @returns True if the Compute Pressure API is supported, false otherwise.
    */
   static isPressureObserverSupported(): boolean {
-    return 'PressureObserver' in window;
+    return typeof window.PressureObserver === 'function';
+  }
+
+  /**
+   * Checks whether the current document is allowed to use compute-pressure.
+   *
+   * @returns True when allowed or when the policy API is unavailable.
+   */
+  private static isComputePressureAllowed(): boolean {
+    const policyDocument = document as DocumentWithPermissionsPolicy;
+    const policy = policyDocument.permissionsPolicy ?? policyDocument.featurePolicy;
+
+    if (!policy?.allowsFeature) {
+      return true;
+    }
+
+    try {
+      return policy.allowsFeature('compute-pressure');
+    } catch {
+      return false;
+    }
   }
 }
 
