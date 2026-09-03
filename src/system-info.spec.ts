@@ -11,12 +11,7 @@ type SystemInfoType = typeof import('./system-info').SystemInfo;
  * @see https://w3c.github.io/compute-pressure/#policy-control
  */
 type PolicyTestScenario = 'allowed' | 'denied' | 'throws' | 'legacy-denied' | 'unavailable';
-type PressureRecord = {
-  source: string;
-  state: PressureState;
-  time: number;
-};
-type PressureObserverCallback = (records: PressureRecord[]) => void;
+type PressureObserverCallback = ConstructorParameters<NonNullable<Window['PressureObserver']>>[0];
 type ObserveMock = jest.Mock<Promise<void>, [string]>;
 
 let pressureObserverCallback: PressureObserverCallback | undefined;
