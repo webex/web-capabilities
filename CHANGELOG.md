@@ -1,3 +1,10 @@
+## [1.13.1](https://github.com/webex/web-capabilities/compare/v1.13.0...v1.13.1) (2026-09-03)
+
+
+### Bug Fixes
+
+* **system-info:** guard compute-pressure observer behind permissions policy ([#23](https://github.com/webex/web-capabilities/issues/23)) ([9aab1eb](https://github.com/webex/web-capabilities/commit/9aab1eb42b76da195588fa2dfadb073906571513))
+
 # [1.13.0](https://github.com/webex/web-capabilities/compare/v1.12.0...v1.13.0) (2026-08-19)
 
 
